@@ -1,0 +1,33 @@
+# Render Free varianta: pro trvalá data nastavte šifrované Upstash zálohy!
+# Viz NASAZENI-HLAVNI.md. Bez Upstash se SQLite na Free může smazat.
+services:
+  - type: web
+    name: slotiva
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: PULZ_BOOTSTRAP_EMAIL
+        value: pulzbarbershop@gmail.com
+      - key: PULZ_BOOTSTRAP_PASSWORD
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: UPSTASH_SNAPSHOT_KEY
+        value: slotiva:main:v1
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
