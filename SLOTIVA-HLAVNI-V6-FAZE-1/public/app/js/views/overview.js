@@ -34,7 +34,9 @@ export async function mount({ view, actions, setTitle, setSubtitle, app }) {
   setSubtitle(capitalize(fmt.dateLong(app.meta.today)));
   actions.append(
     h('a', { class: 'btn btn-secondary', href: app.meta.bookingUrl, target: '_blank', rel: 'noopener' }, icon('external'), h('span', { class: 'btn-label' }, 'Moje stránka')),
-    h('button', { type: 'button', class: 'btn btn-primary', onClick: () => openNewBookingModal({ app, onCreated: load }) }, icon('plus'), h('span', { class: 'btn-label' }, 'Nová rezervace')),
+    app.meta.team.shared
+      ? h('a', { class: 'btn btn-primary', href: '#/kalendar' }, icon('calendar', 16), h('span', { class: 'btn-label' }, 'Kalendář týmu'))
+      : h('button', { type: 'button', class: 'btn btn-primary', onClick: () => openNewBookingModal({ app, onCreated: load }) }, icon('plus'), h('span', { class: 'btn-label' }, 'Nová rezervace')),
   );
 
   let tableMode = false;
@@ -98,6 +100,13 @@ export async function mount({ view, actions, setTitle, setSubtitle, app }) {
 
   function alerts(stats, google, onboarding) {
     const list = [];
+    if (app.meta.team.owner && app.meta.persistence && !app.meta.persistence.enabled) {
+      list.push(alertBox('warning', 'Databáze není externě zálohovaná',
+        'Na bezplatném hostingu může SQLite databáze při restartu nebo nasazení zmizet. Před reálným provozem zapněte šifrovanou Upstash zálohu nebo trvalý disk.'));
+    } else if (app.meta.team.owner && app.meta.persistence?.lastError) {
+      list.push(alertBox('critical', 'Záloha databáze selhala',
+        'Poslední pokus o vzdálené uložení neuspěl. Zkontrolujte připojení Upstash a logy serveru.'));
+    }
     if (google.state === 'revoked' || google.state === 'noscope') {
       list.push(alertBox('critical', 'Google Kalendář je potřeba připojit znovu', google.error || 'Přístup ke kalendáři vypršel nebo byl zrušen.',
         h('a', { class: 'btn btn-secondary btn-sm', href: GOOGLE_CONNECT_URL }, 'Připojit znovu')));

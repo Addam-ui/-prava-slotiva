@@ -50,46 +50,77 @@ function layoutLanes(items) {
 }
 
 export async function mount({ view, actions, app }) {
-  const state = { week: mondayOf(app.meta.today), showGoogle: true, settings: null, data: null };
+  const teamMode = Boolean(app.meta.team.owner && app.meta.team.members?.length);
+  const rememberedMode = sessionStorage.getItem('slotiva-calendar-mode');
+  const state = {
+    week: mondayOf(app.meta.today), date: app.meta.today,
+    mode: ['day', 'week'].includes(rememberedMode) ? rememberedMode : (teamMode ? 'day' : 'week'),
+    focusStaff: 'all', showGoogle: true, settings: null, data: null,
+  };
 
   if (app.meta.team.owner && !app.meta.team.shared) actions.append(h('button', { type: 'button', class: 'btn btn-primary', onClick: () => openNewBookingModal({ app, onCreated: load }) }, icon('plus'), h('span', { class: 'btn-label' }, 'Nová rezervace')));
 
   const range = h('div', { class: 'week-range', 'aria-live': 'polite' });
+  const focusBar = h('div', { class: 'team-day-filters', 'aria-label': 'Zaměstnanci' });
+  const dayMode = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => changeMode('day') }, 'Den');
+  const weekMode = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => changeMode('week') }, 'Týden');
+  const viewModes = h('div', { class: 'calendar-mode-switch', role: 'group', 'aria-label': 'Zobrazení kalendáře' }, dayMode, weekMode);
   const notice = h('div');
   const card = h('div', { class: 'card week' });
   const legend = h('div', { class: 'legend', style: { marginTop: '12px' } });
 
-  if (app.meta.team.shared) view.append(h('p',{class:'hint'},'Společný kalendář celého týmu. Pro vytvoření rezervace nebo změnu pracovní doby vyberte konkrétního barbera v horním přepínači.'));
+  if (app.meta.team.shared) view.append(h('p',{class:'hint'},'Společný kalendář celého týmu. Rezervace a události jsou rozdělené podle zaměstnance. Pro novou rezervaci vyberte barbera v horní liště.'));
   if (!app.meta.team.owner) view.append(h('p',{class:'hint'},'Váš kalendář a rezervace. Nové žádosti můžete potvrdit otevřením rezervace.'));
   view.append(
     h('div', { class: 'week-toolbar' },
       h('div', { class: 'input-group' },
-        h('button', { type: 'button', class: 'btn btn-secondary btn-icon', 'aria-label': 'Předchozí týden', onClick: () => shift(-7) }, icon('chevronLeft')),
-        h('button', { type: 'button', class: 'btn btn-secondary', onClick: () => { state.week = mondayOf(app.meta.today); load(); } }, 'Dnes'),
-        h('button', { type: 'button', class: 'btn btn-secondary btn-icon', 'aria-label': 'Další týden', onClick: () => shift(7) }, icon('chevronRight'))),
+        h('button', { type: 'button', class: 'btn btn-secondary btn-icon', 'aria-label': 'Předchozí den nebo týden', onClick: () => shift(-1) }, icon('chevronLeft')),
+        h('button', { type: 'button', class: 'btn btn-secondary', onClick: () => { state.date = app.meta.today; state.week = mondayOf(app.meta.today); load(); } }, 'Dnes'),
+        h('button', { type: 'button', class: 'btn btn-secondary btn-icon', 'aria-label': 'Další den nebo týden', onClick: () => shift(1) }, icon('chevronRight'))),
       range,
       h('div', { style: { flex: '1' } }),
+      viewModes,
       app.meta.team.owner && app.meta.google.state === 'connected'
         ? switchControl({ checked: true, label: 'Události z Google Kalendáře', onChange: (value) => { state.showGoogle = value; render(); } })
         : null),
     notice,
+    focusBar,
     card,
     legend,
   );
 
   ({ settings: state.settings } = await get('/settings'));
 
-  function shift(days) {
-    state.week = addDays(state.week, days);
+  function changeMode(mode) {
+    if (state.mode === mode) return;
+    state.mode = mode;
+    sessionStorage.setItem('slotiva-calendar-mode', mode);
+    if (mode === 'week') state.week = mondayOf(state.date);
+    load();
+  }
+
+  function shift(direction) {
+    if (state.mode === 'day') {
+      state.date = addDays(state.date, direction);
+      state.week = mondayOf(state.date);
+    } else {
+      state.date = addDays(state.date, direction * 7);
+      state.week = mondayOf(state.date);
+    }
     load();
   }
 
   async function load() {
-    const end = addDays(state.week, 6);
-    range.textContent = weekLabel(state.week, end);
+    const from = state.mode === 'day' ? state.date : state.week;
+    const end = state.mode === 'day' ? state.date : addDays(state.week, 6);
+    range.textContent = state.mode === 'day' ? fmt.dateLong(state.date) : weekLabel(state.week, end);
+    dayMode.classList.toggle('is-active', state.mode === 'day');
+    weekMode.classList.toggle('is-active', state.mode === 'week');
+    dayMode.setAttribute('aria-pressed', String(state.mode === 'day'));
+    weekMode.setAttribute('aria-pressed', String(state.mode === 'week'));
     if (state.data) card.style.opacity = '0.55';
     try {
-      state.data = await get(`/calendar?from=${state.week}&to=${end}`);
+      state.data = await get(`/calendar?from=${from}&to=${end}`);
       render();
     } catch (err) {
       notice.replaceChildren(alertBox('critical', 'Kalendář se nepodařilo načíst', err.message));
@@ -99,7 +130,15 @@ export async function mount({ view, actions, app }) {
   }
 
   function render() {
+    if (!state.data) return;
     const { bookings, events, googleError } = state.data;
+    if (state.mode === 'day') {
+      renderDay();
+      return;
+    }
+    focusBar.replaceChildren();
+    focusBar.hidden = true;
+    card.className = 'card week';
     const days = Array.from({ length: 7 }, (_, i) => addDays(state.week, i));
     const today = app.meta.today;
     const workingHours = state.settings.workingHours;
@@ -248,6 +287,133 @@ export async function mount({ view, actions, app }) {
       h('span', {}, h('span', { class: 'swatch', style: { background: 'var(--surface-2)', boxShadow: 'inset 0 0 0 1px var(--line)' } }), 'Mimo otevírací dobu'),
       app.meta.team.owner && !app.meta.team.shared ? h('span', { class: 'muted' }, 'Kliknutím do volného místa vytvoříte rezervaci') : null,
     ].filter(Boolean));
+  }
+
+
+  /** Denní pohled: jeden sloupec na člověka, jeho vlastní pracovní doba a rezervace. */
+  function renderDay() {
+    const { staff = [], bookings = [], events = [], googleError } = state.data;
+    const day = state.date;
+    const people = staff.length ? staff : [{ id: app.meta.user.id, name: app.meta.user.name, workingHours: state.settings.workingHours }];
+    if (state.focusStaff !== 'all' && !people.some(person => String(person.id) === state.focusStaff)) state.focusStaff = 'all';
+    const isShared = Boolean(app.meta.team.shared && people.length > 1);
+    focusBar.hidden = !isShared;
+    focusBar.replaceChildren(...(isShared ? [
+      { id: 'all', name: 'Všichni' },
+      ...people.map(person => ({ id: String(person.id), name: person.name })),
+    ].map(item => h('button', {
+      type: 'button', class: `btn btn-sm ${state.focusStaff === item.id ? 'btn-primary' : 'btn-secondary'}`,
+      'aria-pressed': String(state.focusStaff === item.id),
+      onClick: () => { state.focusStaff = item.id; renderDay(); },
+    }, item.name)) : []));
+
+    const displayed = isShared && state.focusStaff !== 'all'
+      ? people.filter(person => String(person.id) === state.focusStaff)
+      : people;
+    const dayBookings = bookings.filter(b => b.date === day && b.status !== 'cancelled');
+    const dayEvents = state.showGoogle ? events.filter(e => {
+      const start = localParts(e.start);
+      const end = localParts(e.end);
+      return e.allDay ? day >= start.date && day < end.date : day >= start.date && day <= end.date;
+    }) : [];
+
+    notice.replaceChildren(...(googleError ? [alertBox('warning', 'Kalendář Google není úplný', googleError)] : []));
+    let minHour = 24;
+    let maxHour = 0;
+    for (const person of displayed) {
+      for (const slot of person.workingHours?.[weekdayOf(day)] || []) {
+        minHour = Math.min(minHour, Math.floor(toMinutes(slot.from) / 60));
+        maxHour = Math.max(maxHour, Math.ceil(toMinutes(slot.to) / 60));
+      }
+      for (const booking of dayBookings.filter(b => Number(b.staffId) === Number(person.id))) {
+        minHour = Math.min(minHour, Math.floor(toMinutes(booking.time) / 60));
+        maxHour = Math.max(maxHour, Math.ceil(toMinutes(booking.endTime > booking.time ? booking.endTime : '23:59') / 60));
+      }
+      for (const event of dayEvents.filter(e => Number(e.staffId) === Number(person.id) && !e.allDay)) {
+        const start = localParts(event.start), end = localParts(event.end);
+        minHour = Math.min(minHour, start.date === day ? Math.floor(start.minutes / 60) : 0);
+        maxHour = Math.max(maxHour, end.date === day ? Math.ceil(end.minutes / 60) : 24);
+      }
+    }
+    if (minHour >= maxHour) [minHour, maxHour] = [8, 18];
+    minHour = Math.max(0, minHour);
+    maxHour = Math.min(24, maxHour);
+    const height = (maxHour - minHour) * HOUR_PX;
+    const y = minutes => (minutes - minHour * 60) * HOUR_PX / 60;
+
+    const hours = h('div', { class: 'team-day-hours', style: { height: `${height}px` } },
+      Array.from({ length: maxHour - minHour + 1 }, (_, i) =>
+        h('div', { class: 'week-hour-label', style: { top: `${i * HOUR_PX}px` } }, `${pad(minHour + i)}:00`)));
+    const columns = displayed.map(person => {
+      const col = h('div', { class: 'team-day-col', style: { height: `${height}px` } });
+      const open = (person.workingHours?.[weekdayOf(day)] || []).map(slot => [toMinutes(slot.from), toMinutes(slot.to)]);
+      let cursor = minHour * 60;
+      for (const [from, to] of open) {
+        if (from > cursor) col.append(h('div', { class: 'closed', style: { top: `${y(cursor)}px`, height: `${y(from)-y(cursor)}px` } }));
+        cursor = Math.max(cursor, to);
+      }
+      if (cursor < maxHour * 60) col.append(h('div', { class: 'closed', style: { top: `${y(cursor)}px`, height: `${y(maxHour*60)-y(cursor)}px` } }));
+      for (let m = minHour * 60 + 30; m < maxHour * 60; m += 30) {
+        col.append(h('div', { class: `hour-line${m % 60 ? ' half' : ''}`, style: { top: `${y(m)}px` } }));
+      }
+      const items = [
+        ...dayBookings.filter(b => Number(b.staffId) === Number(person.id)).map(b => ({
+          kind: 'booking', booking: b, start: toMinutes(b.time),
+          end: b.endTime > b.time ? toMinutes(b.endTime) : 1440,
+        })),
+        ...dayEvents.filter(e => Number(e.staffId) === Number(person.id) && !e.allDay).map(e => {
+          const start = localParts(e.start), end = localParts(e.end);
+          return { kind: 'event', event: e, start: start.date === day ? start.minutes : 0, end: end.date === day ? end.minutes : 1440 };
+        }),
+      ].filter(item => item.end > item.start).sort((a, b) => a.start - b.start || b.end - a.end);
+      layoutLanes(items);
+      for (const item of items) {
+        const left = 100 * item.lane / item.lanes;
+        const width = 100 / item.lanes;
+        const top = y(item.start);
+        const blockHeight = Math.max(21, y(item.end) - top - 2);
+        const style = { top: `${top+1}px`, height: `${blockHeight}px`, left: `calc(${left}% + 3px)`, width: `calc(${width}% - 6px)` };
+        if (item.kind === 'booking') {
+          const b = item.booking;
+          col.append(h('button', { type: 'button', class: `ev team-booking ${b.status === 'pending' ? 'is-pending' : ''}`,
+            style: { ...style, background: b.color, color: readableInk(b.color) },
+            title: `${b.time}–${b.endTime} · ${b.customer.name} · ${b.serviceName}`,
+            onClick: () => openBookingDrawer(b.id, { app, onChange: load }),
+          }, h('b', {}, b.customer.name), h('span', {}, `${b.time}–${b.endTime}`),
+          blockHeight > 54 ? h('span', {}, b.serviceName) : null));
+        } else {
+          col.append(h('div', { class: 'ev ev-busy', style,
+            title: item.event.title }, h('b', {}, item.event.title)));
+        }
+      }
+      const allDay = dayEvents.filter(e => Number(e.staffId) === Number(person.id) && e.allDay);
+      const bookedCount = dayBookings.filter(b => Number(b.staffId) === Number(person.id)).length;
+      return { person, col, bookedCount, allDay };
+    });
+
+    card.className = 'card team-day';
+    if (!displayed.length) {
+      card.replaceChildren(h('div', { class:'team-day-empty' }, 'Zatím nejsou přidaní žádní zaměstnanci.'));
+      return;
+    }
+    const gridStyle = { gridTemplateColumns: `56px repeat(${displayed.length}, minmax(205px, 1fr))` };
+    const headerCells = columns.map(({ person, bookedCount, allDay }) => {
+      const avatar = person.avatar
+        ? h('img', { class: 'team-day-avatar', src: person.avatar, alt: '' })
+        : h('span', { class: 'team-day-avatar-placeholder' }, icon('user', 18));
+      const subtitle = h('span', {}, `${bookedCount} ${bookedCount === 1 ? 'rezervace' : bookedCount < 5 && bookedCount > 1 ? 'rezervace' : 'rezervací'}`);
+      const labels = allDay.map(event => h('small', { class: 'team-day-allday' }, event.title));
+      return h('div', { class: 'team-day-person' }, avatar,
+        h('div', { class: 'team-day-person-copy' }, h('strong', {}, person.name), subtitle, labels));
+    });
+    const header = h('div', { class: 'team-day-head', style: gridStyle },
+      h('div', { class: 'team-day-head-spacer' }), headerCells);
+    const body = h('div', { class: 'team-day-body', style: gridStyle }, hours, columns.map(item => item.col));
+    card.replaceChildren(h('div', { class: 'team-day-inner' }, header, body));
+    legend.replaceChildren(
+      h('span', {}, h('span', { class:'swatch', style:{background:'var(--accent)'} }), 'Rezervace'),
+      h('span', {}, h('span', { class:'swatch', style:{background:'var(--surface-2)',boxShadow:'inset 0 0 0 1px var(--line)'} }), 'Mimo pracovní dobu'),
+      h('span', {}, 'Klikněte na rezervaci pro její detail'));
   }
 
   await load();

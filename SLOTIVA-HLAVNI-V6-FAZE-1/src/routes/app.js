@@ -9,6 +9,7 @@ import { getSettings, updateSettings, patchSettings, GOOGLE_COLORS, SLOT_STEPS }
 import { listServices, createService, updateService, deleteService, reorderServices } from '../services.js';
 import * as users from '../users.js';
 import * as team from '../team.js';
+import { calendarRoster } from '../calendar-roster.js';
 import * as bookings from '../bookings.js';
 import * as google from '../google.js';
 import { mailEnabled, verifyMail, sendMail } from '../mailer.js';
@@ -211,13 +212,22 @@ appRouter.get('/availability', async (req, res) => {
 });
 
 appRouter.get('/calendar', async (req, res) => {
-  const periods = await Promise.all(scope(req).map(id => bookings.getCalendarRange(id, String(req.query.from || ''), String(req.query.to || ''))));
-  const people = Object.fromEntries(scope(req).map(id => [id, users.getUserRow(id)?.name || 'Barber']));
+  const ids = scope(req);
+  const periods = await Promise.all(ids.map(id => bookings.getCalendarRange(id, String(req.query.from || ''), String(req.query.to || ''))));
+  const people = Object.fromEntries(ids.map(id => [id, users.getUserRow(id)?.name || 'Zaměstnanec']));
+  const activeTeam = team.isOwner(req.user) && team.members(req.user.id).some(member => member.team_active);
+  // Staré rezervace vytvořené ještě na majitele neztrácíme. Sloupec majitele
+  // ale v týmovém režimu zobrazíme jen tehdy, pokud v rozsahu něco obsahuje.
+  const staff = calendarRoster({
+    ids, periods, ownerId: team.ownerId(req.user), isOwner: team.isOwner(req.user), hasTeam: activeTeam,
+    getPerson: users.getUserRow, getWorkingHours: id => getSettings(id).workingHours,
+  });
   res.json({
     timezone: periods[0]?.timezone || getSettings(uid(req)).timezone,
+    staff,
     bookings: periods.flatMap(period => period.bookings),
-    events: periods.flatMap((period, i) => period.events.map(e => ({ ...e, staffName: people[scope(req)[i]] }))),
-    googleError: periods.map((p,i) => p.googleError ? `${people[scope(req)[i]]}: ${p.googleError}` : '').filter(Boolean).join('; ') || null,
+    events: periods.flatMap((period, i) => period.events.map(e => ({ ...e, staffId: ids[i], staffName: people[ids[i]] }))),
+    googleError: periods.map((period, i) => period.googleError ? `${people[ids[i]]}: ${period.googleError}` : '').filter(Boolean).join('; ') || null,
   });
 });
 

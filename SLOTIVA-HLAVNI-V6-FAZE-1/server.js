@@ -2,6 +2,7 @@ import path from 'node:path';
 import express from 'express';
 import { config, ROOT } from './src/config.js';
 import { db, durability } from './src/db.js';
+import { verifyDurableConnection, durabilityStatus } from './src/durable.js';
 import { authApi, oauthRoutes } from './src/routes/auth.js';
 import { publicRouter } from './src/routes/public.js';
 import { appRouter } from './src/routes/app.js';
@@ -20,7 +21,7 @@ const FONTS_DIR = path.join(ROOT, 'node_modules', '@fontsource-variable', 'plus-
 app.disable('x-powered-by');
 if (config.isProduction) app.set('trust proxy', 1);
 
-app.get('/healthz', (req, res) => res.json({ ok: true, app: config.appName, time: new Date().toISOString() }));
+app.get('/healthz', (req, res) => res.json({ ok: true, app: config.appName, persistence: durabilityStatus().mode, time: new Date().toISOString() }));
 
 app.use(securityHeaders);
 app.use(express.json({ limit: '950kb' }));
@@ -83,6 +84,7 @@ app.get('/:slug', (req, res, next) => {
 app.use((req, res) => res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html')));
 app.use(errorHandler);
 
+await verifyDurableConnection();
 await bootstrapPulz();
 if (durability.changed()) await durability.flush();
 const promoted = syncAllAdmins();

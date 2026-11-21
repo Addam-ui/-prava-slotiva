@@ -13,6 +13,7 @@ const url = (process.env.UPSTASH_REDIS_REST_URL || '').trim().replace(/\/+$/, ''
 const token = (process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
 const prefix = (process.env.UPSTASH_SNAPSHOT_KEY || 'slotiva:backup:v1').trim();
 const enabled = Boolean(url && token);
+const required = process.env.REQUIRE_UPSTASH_BACKUP === 'true';
 const MAX_BYTES = 32 * 1024 * 1024;
 const PART_SIZE = 160_000;
 let lastSavedAt = null;
@@ -20,10 +21,11 @@ let lastError = null;
 
 export function persistenceEnabled() { return enabled; }
 export function durabilityStatus() {
-  return { enabled, mode: enabled ? 'encrypted-upstash-snapshot' : 'local-sqlite', lastSavedAt, lastError };
+  return { enabled, required, mode: enabled ? 'encrypted-upstash-snapshot' : 'local-sqlite', lastSavedAt, lastError };
 }
 
 function assertConfiguration() {
+  if (required && !enabled) throw new Error('REQUIRE_UPSTASH_BACKUP=true: musíte nastavit platné UPSTASH_REDIS_REST_URL a UPSTASH_REDIS_REST_TOKEN.');
   if (!url && !token) return;
   if (!url || !token) throw new Error('Pro trvalé ukládání nastavte obě proměnné UPSTASH_REDIS_REST_URL a UPSTASH_REDIS_REST_TOKEN.');
   if (!(url.startsWith('https://') || (process.env.NODE_ENV !== 'production' && /^http:\/\/127\.0\.0\.1:\d+$/.test(url)))) {
@@ -62,6 +64,13 @@ async function redis(...args) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.error) throw new Error(`Externí úložiště odmítlo požadavek (${response.status}): ${String(payload.error || '').slice(0, 120)}`);
   return payload.result;
+}
+
+/** Kontrola vzdáleného úložiště před otevřením služby (volitelné fail-closed). */
+export async function verifyDurableConnection() {
+  if (!required) return;
+  const pong = await redis('PING');
+  if (pong !== 'PONG') throw new Error('Upstash REST neodpověděl správně; aplikace se kvůli ochraně dat nespustí.');
 }
 
 async function restore(dbFile) {

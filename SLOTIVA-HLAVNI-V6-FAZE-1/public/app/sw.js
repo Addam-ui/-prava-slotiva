@@ -3,7 +3,7 @@
    Ukládá se jen vzhled aplikace (stránka, styly, skripty, písma) – rezervace
    a nastavení se vždy načítají ze serveru, aby uživatel nikdy neviděl stará data. */
 
-const VERSION = 'slotiva-app-5-ui-photo';
+const VERSION = 'slotiva-app-6-team-calendar';
 
 /* Soubory, bez kterých se dashboard nespustí. */
 const SHELL = [

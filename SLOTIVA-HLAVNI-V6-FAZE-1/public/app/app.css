@@ -895,3 +895,40 @@ code, .code { font-family: var(--mono); font-size: 12.5px; }
   .color-hex { display: none; }
   .modal-photo { margin: 0 auto; }
 }
+
+
+/* Slotiva V6 – denní týmový kalendář. Týdenní pohled zůstává beze změny. */
+.calendar-mode-switch { display:flex; gap:4px; padding:3px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); }
+.calendar-mode-switch .btn { border:0; min-height:32px; }
+.calendar-mode-switch .btn.is-active { background:var(--accent); color:var(--on-accent); }
+.team-day-filters { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px; }
+.team-day-filters[hidden] { display:none; }
+.team-day { overflow-x:auto; overscroll-behavior-inline:contain; }
+.team-day-inner { min-width:max-content; width:100%; }
+.team-day-head, .team-day-body { display:grid; }
+.team-day-head { position:sticky; top:0; z-index:5; background:var(--surface); border-bottom:1px solid var(--line); }
+.team-day-person { display:flex; align-items:center; gap:10px; padding:12px 14px; border-left:1px solid var(--line); min-width:0; }
+.team-day-person-copy { display:grid; gap:3px; min-width:0; }
+.team-day-person-copy strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.team-day-person-copy span { color:var(--ink-3); font-size:12px; }
+.team-day-avatar, .team-day-avatar-placeholder { height:36px; width:36px; border-radius:50%; object-fit:cover; flex:none; }
+.team-day-avatar-placeholder { display:grid; place-items:center; background:var(--surface-2); color:var(--ink-2); }
+.team-day-allday { display:block; max-width:240px; color:var(--busy-ink); background:var(--busy-fill); border-radius:5px; padding:2px 6px; white-space:normal; }
+.team-day-hours { position:relative; }
+.team-day-col { position:relative; border-left:1px solid var(--line); min-width:205px; }
+.team-day-col .closed { position:absolute; left:0; right:0; background:var(--surface-2); opacity:.58; }
+.team-day-col .hour-line { position:absolute; left:0; right:0; border-top:1px solid var(--grid); }
+.team-day-col .hour-line.half { border-top-color:color-mix(in srgb,var(--grid) 50%,transparent); }
+.team-day-col .ev { min-width:0; }
+.team-day-col .ev.is-pending { outline:2px dashed var(--axis); outline-offset:-2px; }
+.team-day-empty { padding:26px; color:var(--ink-3); }
+@media(max-width:700px) {
+  .week-toolbar { gap:8px; }
+  .week-range { order:3; width:100%; font-size:14px; }
+  .calendar-mode-switch { margin-left:auto; }
+  .team-day-inner { width:max-content; }
+  .team-day-col { min-width:min(75vw,310px); }
+  .team-day-person { min-width:min(75vw,310px); }
+  .team-day-filters { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+  .team-day-filters .btn { white-space:nowrap; }
+}
