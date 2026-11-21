@@ -25,6 +25,7 @@ export async function openNewBookingModal({ app, date, time, onCreated } = {}) {
     time: null,
     preferTime: time || null,
     custom: false,
+    repeat: 'none',
   };
 
   const error = h('div');
@@ -43,6 +44,24 @@ export async function openNewBookingModal({ app, date, time, onCreated } = {}) {
   const phone = h('input', { class: 'input', id: 'nb-phone', type: 'tel', autocomplete: 'off' });
   const note = h('textarea', { class: 'textarea', id: 'nb-note', rows: '2' });
   const notify = h('input', { type: 'checkbox', checked: true });
+  const recurrence = h('select', { class: 'select', 'aria-label': 'Opakování rezervace' },
+    h('option', { value: 'none' }, 'Jednorázová rezervace'),
+    h('option', { value: '1' }, 'Každý týden'),
+    h('option', { value: '2' }, 'Každé dva týdny'));
+  const recurrenceCount = h('select', { class: 'select', 'aria-label': 'Počet termínů' },
+    Array.from({ length: 11 }, (_, i) => h('option', { value: String(i + 2), selected: i === 4 }, `${i + 2} termínů`)));
+  const repeatHint = h('div', { class: 'hint', hidden: true },
+    'Série se vytvoří pouze tehdy, když jsou volné všechny termíny. Při kolizi se neuloží nic. Opakované rezervace neposílají zákazníkovi hromadné e-maily.');
+  const countField = field('Počet opakování', recurrenceCount, { wide: true });
+  countField.hidden = true;
+  recurrence.addEventListener('change', () => {
+    state.repeat = recurrence.value;
+    const repeating = state.repeat !== 'none';
+    countField.hidden = !repeating;
+    repeatHint.hidden = !repeating;
+    if (repeating) { force.checked = false; force.disabled = true; }
+    else force.disabled = false;
+  });
 
   function setCustom(value) {
     state.custom = value;
@@ -98,6 +117,7 @@ export async function openNewBookingModal({ app, date, time, onCreated } = {}) {
     field('E-mail', email),
     field('Telefon', phone),
     field('Poznámka', note, { wide: true }),
+    field('Opakování', recurrence, { wide: true }), countField, repeatHint,
     app.meta.mailEnabled
       ? h('label', { class: 'check span-2' }, notify, h('span', {}, 'Poslat klientovi potvrzení e-mailem (když vyplníte e-mail)'))
       : null));
@@ -118,7 +138,7 @@ export async function openNewBookingModal({ app, date, time, onCreated } = {}) {
       }
       withBusy(e.currentTarget, async () => {
         try {
-          const { booking } = await post('/bookings', {
+          const payload = {
             serviceId: state.serviceId,
             date: state.date,
             time: chosen,
@@ -128,9 +148,19 @@ export async function openNewBookingModal({ app, date, time, onCreated } = {}) {
             phone: phone.value,
             note: note.value,
             notifyCustomer: app.meta.mailEnabled && notify.checked && Boolean(email.value.trim()),
-          });
+          };
+          let booking;
+          if (state.repeat === 'none') {
+            ({ booking } = await post('/bookings', payload));
+            toast(`Rezervace vytvořena · ${fmt.relativeDay(booking.date, app.meta.today)} ${booking.time}`);
+          } else {
+            const response = await post('/booking-series', {
+              ...payload, intervalWeeks: Number(state.repeat), count: Number(recurrenceCount.value),
+            });
+            booking = response.bookings[0];
+            toast(`Vytvořeno ${response.bookings.length} opakovaných termínů`);
+          }
           m.close();
-          toast(`Rezervace vytvořena · ${fmt.relativeDay(booking.date, app.meta.today)} ${booking.time}`);
           app.refreshMeta();
           onCreated?.(booking);
         } catch (err) {

@@ -187,11 +187,20 @@ svg { flex-shrink: 0; }
 }
 .nav a:hover { background: var(--surface-2); color: var(--ink); }
 .nav a.is-active { background: var(--surface-raised); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--shadow-sm); }
+/* Decentní počítadlo v navigaci: barevná tečka = vyžaduje pozornost. */
 .nav a .count {
-  margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 6px; text-align: center;
-  font-size: 12px; font-weight: 600; background: var(--surface-3); color: var(--ink-2); font-variant-numeric: tabular-nums;
+  margin-left: auto; min-width: 23px; height: 22px; padding: 0 7px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border-radius: 999px; white-space: nowrap;
+  font-size: 11px; line-height: 1; font-weight: 650;
+  background: var(--surface-3); color: var(--ink-2); font-variant-numeric: tabular-nums;
 }
-.nav a .count.is-warning { background: var(--warning-soft); color: var(--warning-text); }
+.nav a .count[hidden] { display: none; }
+.nav a .count.is-attention { background: var(--warning-soft); color: var(--warning-text); }
+.nav a .count.is-attention::before {
+  content: ''; width: 6px; height: 6px; flex: none; border-radius: 50%;
+  background: var(--warning); /* stejné značení jako stavy rezervací */
+}
 
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 16px; }
 .sidebar-foot a, .sidebar-foot button {
@@ -932,3 +941,63 @@ code, .code { font-family: var(--mono); font-size: 12.5px; }
   .team-day-filters { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
   .team-day-filters .btn { white-space:nowrap; }
 }
+
+/* Slotiva V6.1 – čitelný společný kalendář na desktopu i telefonu. */
+.week { max-width:100%; min-width:0; }
+.week-inner { min-width: 1000px; }
+.week-head, .week-allday, .week-body { grid-template-columns: 76px repeat(7,minmax(0,1fr)); }
+.week-hour-label { right:10px; font-size:12px; font-weight:600; white-space:nowrap; line-height:1.1; }
+.week-hours, .team-day-hours { isolation:isolate; }
+.team-day { --time-col:76px; --staff-col:240px; max-width:100%; min-width:0; overflow-x:auto; overflow-y:visible; scrollbar-gutter:stable; overscroll-behavior-x:contain; }
+.team-day-inner { width:100%; min-width:max-content; }
+.team-day-head, .team-day-body { width:100%; min-width:0; }
+.team-day-head { position:sticky; top:0; z-index:6; border-bottom:1px solid var(--line); }
+.team-day-head-spacer { position:sticky; left:0; z-index:7; background:var(--surface); border-right:1px solid var(--line); }
+.team-day-person { padding:12px 14px; min-width:0; overflow:hidden; }
+.team-day-person-copy { min-width:0; overflow:hidden; }
+.team-day-body { padding-top:14px; padding-bottom:24px; }
+.team-day-hours { position:sticky; left:0; z-index:4; min-width:0; background:var(--surface); border-right:1px solid var(--line); }
+.team-day-hours .week-hour-label { right:10px; color:var(--ink-2); }
+.team-day-col { min-width:0; overflow:hidden; }
+.team-day-col .ev { box-sizing:border-box; max-width:calc(100% - 6px); font-size:12px; padding:4px 7px; border:1px solid color-mix(in srgb,var(--surface) 65%,transparent); }
+.team-day-col .ev b { line-height:1.15; }
+.team-day-col .ev span { line-height:1.2; }
+.calendar-scroll-hint { display:none; color:var(--ink-3); font-size:12px; padding:0 0 8px; }
+.time-off-time-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.time-off-item { padding:14px 0; display:flex; align-items:flex-start; gap:16px; justify-content:space-between; border-top:1px solid var(--line); }
+.time-off-item-main { display:grid; gap:5px; min-width:0; overflow-wrap:anywhere; }
+.time-off-item-main strong { font-size:14px; }
+.time-off-dates { font-size:13px; color:var(--ink-2); }
+.time-off-item-actions { display:flex; gap:7px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+.time-off-status { font-size:12px; border-radius:999px; padding:4px 8px; color:var(--ink-2); background:var(--surface-2); white-space:nowrap; }
+.time-off-status.is-approved { color:var(--good-text); background:var(--good-soft); }
+.time-off-status.is-pending { color:var(--warning-text); background:var(--warning-soft); }
+@media(max-width:700px) {
+  .team-day { --time-col:64px; --staff-col:230px; scrollbar-gutter:auto; }
+  .team-day-inner { width:100%; min-width:max-content; }
+  .team-day-col, .team-day-person { min-width:0; }
+  .team-day-person { padding:9px 10px; gap:7px; }
+  .team-day-person-copy strong { font-size:13px; }
+  .team-day-avatar, .team-day-avatar-placeholder { width:30px; height:30px; }
+  .team-day-hours .week-hour-label { right:7px; font-size:11px; }
+  .team-day-filters .btn { min-width:69px; }
+  .calendar-scroll-hint:not([hidden]) { display:block; }
+  .time-off-item { flex-direction:column; gap:10px; }
+  .time-off-item-actions { justify-content:flex-start; }
+  .time-off-time-pair { gap:8px; }
+}
+
+.team-day-absence { position:absolute; top:0; left:0; right:0; z-index:1; pointer-events:none; display:flex; justify-content:center; align-items:flex-start; padding-top:40px; background:color-mix(in srgb,var(--warning-soft) 63%,transparent); border:1px dashed var(--warning); }
+.team-day-absence span { display:inline-block; padding:5px 10px; font-size:12px; font-weight:650; color:var(--warning-text); background:var(--surface); border-radius:7px; }
+
+/* V6.2: notifikační centrum – responzivní, bez externích komponent. */
+.notification-bar { display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap }
+.notification-list { overflow:hidden }
+.notification-item { padding:16px;display:flex;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line) }
+.notification-item:last-child { border-bottom:0 }
+.notification-item.is-unread { box-shadow:inset 3px 0 var(--brand,#17aba6);background:var(--surface-2) }
+.notification-icon { background:var(--surface-2);padding:9px;border-radius:10px;flex-shrink:0 }
+.notification-copy { flex:1;min-width:0;overflow-wrap:anywhere }
+.notification-copy p { margin:5px 0 }
+.notification-actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap }
+@media(max-width:600px){.notification-item{flex-wrap:wrap}.notification-actions{width:100%;padding-left:44px}}

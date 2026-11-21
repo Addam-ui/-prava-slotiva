@@ -3,7 +3,7 @@
    Ukládá se jen vzhled aplikace (stránka, styly, skripty, písma) – rezervace
    a nastavení se vždy načítají ze serveru, aby uživatel nikdy neviděl stará data. */
 
-const VERSION = 'slotiva-app-6-team-calendar';
+const VERSION = 'slotiva-app-62-recurring-notifications';
 
 /* Soubory, bez kterých se dashboard nespustí. */
 const SHELL = [
@@ -22,6 +22,8 @@ const SHELL = [
   '/app/js/views/booking-drawer.js',
   '/app/js/views/new-booking.js',
   '/app/js/views/calendar.js',
+  '/app/js/views/time-off.js',
+  '/app/js/views/notifications.js',
   '/app/js/views/services.js',
   '/app/js/views/settings.js',
   '/app/js/views/team.js',

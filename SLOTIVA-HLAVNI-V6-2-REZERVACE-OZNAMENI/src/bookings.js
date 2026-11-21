@@ -7,11 +7,13 @@ import { getServiceRow } from './services.js';
 import { getUserRow } from './users.js';
 import { computeSlots, findSlot, localDateTime } from './availability.js';
 import * as google from './google.js';
+import { timeOffBusy, timeOffEvents } from './time-off.js';
 import * as emails from './emails.js';
 import { sendMail } from './mailer.js';
 import { badRequest, conflict, notFound, unavailable } from './errors.js';
 import { localParts, fmtDateLong, fmtPrice } from './format.js';
 import * as v from './validate.js';
+import { bookingNotice } from './notifications.js';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -47,6 +49,7 @@ export function adminBookingView(row, settings = getSettings(row.user_id)) {
   const end = localParts(row.end_utc, tz);
   return {
     id: row.id,
+    seriesId: row.series_id || null,
     staffId: row.user_id,
     staffName: getUserRow(row.user_id)?.name || '',
     code: row.code,
@@ -264,6 +267,8 @@ export async function getBusy(userId, fromMs, toMs, { fresh = false, excludeBook
     if (!inCalendar) busy.push({ start: Date.parse(r.start_utc), end: Date.parse(r.end_utc) });
   }
 
+  busy.push(...timeOffBusy(userId, fromMs, toMs));
+  busy.sort((a, b) => a.start - b.start);
   return { busy, seenEventIds };
 }
 
@@ -441,7 +446,7 @@ export async function createBooking(userId, input, { source = 'web' } = {}) {
   }
 
   const id = transaction(() => {
-    if (!force && findLocalClash(userId, start, end)) throw slotTakenError(admin);
+    if (!force && (findLocalClash(userId, start, end) || timeOffBusy(userId, start, end).length)) throw slotTakenError(admin);
     const insert = db.prepare(`
       INSERT INTO bookings (user_id, code, cancel_token, service_id, service_name, color_id, price, start_utc, end_utc,
         customer_name, customer_email, customer_phone, note, source, status, google_pending)
@@ -463,6 +468,7 @@ export async function createBooking(userId, input, { source = 'web' } = {}) {
   invalidateBusyCache(userId);
   const row = requiresApproval ? getBookingRow(userId, id) : await pushToGoogle(userId, id);
   const owner = getUserRow(userId);
+  bookingNotice(row, 'created');
 
   if ((!admin && !requiresApproval) || (admin && v.bool(input.notifyCustomer))) notify(emails.customerConfirmation(row, settings));
   if (!admin) notify(emails.ownerNewBooking(row, settings, owner));
@@ -484,6 +490,7 @@ export async function cancelBooking(userId, id, { by, notifyCustomer = false }) 
   invalidateBusyCache(userId);
 
   const updated = await pushToGoogle(userId, id);
+  bookingNotice(updated, 'cancelled');
   const settings = getSettings(userId);
   const owner = getUserRow(userId);
   if (by === 'customer') {
@@ -528,7 +535,7 @@ export async function rescheduleBooking(userId, id, input) {
   }
 
   transaction(() => {
-    if (!force && findLocalClash(userId, start, end, { excludeId: row.id })) throw slotTakenError(true);
+    if (!force && (findLocalClash(userId, start, end, { excludeId: row.id }) || timeOffBusy(userId, start, end).length)) throw slotTakenError(true);
     db.prepare('UPDATE bookings SET start_utc = ?, end_utc = ?, updated_at = ? WHERE id = ?').run(iso(start), iso(end), nowIso(), row.id);
     if (service) {
       db.prepare('UPDATE bookings SET service_id = ?, service_name = ?, color_id = ?, price = ? WHERE id = ?')
@@ -539,6 +546,7 @@ export async function rescheduleBooking(userId, id, input) {
   invalidateBusyCache(userId);
 
   const updated = await pushToGoogle(userId, id);
+  bookingNotice(updated, 'rescheduled');
   if (v.bool(input.notifyCustomer)) notify(emails.customerRescheduled(updated, settings));
   return updated;
 }
@@ -558,7 +566,9 @@ export async function setBookingStatus(userId, id, status, { notifyCustomer = fa
     db.prepare('UPDATE bookings SET status = ?, cancelled_at = NULL, cancelled_by = NULL, updated_at = ? WHERE id = ?').run(status, nowIso(), row.id);
     markPending(userId, row.id, row.google_event_id ? 'update' : 'create');
     invalidateBusyCache(userId);
-    return pushToGoogle(userId, id);
+    const restored = await pushToGoogle(userId, id);
+    bookingNotice(restored, status);
+    return restored;
   }
 
   db.prepare('UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?').run(status, nowIso(), row.id);
@@ -567,9 +577,12 @@ export async function setBookingStatus(userId, id, status, { notifyCustomer = fa
     invalidateBusyCache(userId);
     const confirmed = await pushToGoogle(userId, id);
     if (notifyCustomer) notify(emails.customerConfirmation(confirmed, getSettings(userId)));
+    bookingNotice(confirmed, status);
     return confirmed;
   }
-  return getBookingRow(userId, id);
+  const changed = getBookingRow(userId, id);
+  bookingNotice(changed, status);
+  return changed;
 }
 
 export async function updateBookingDetails(userId, id, input) {
@@ -654,7 +667,7 @@ export async function getCalendarRange(userId, from, to) {
     .all(Number(userId), iso(toMs), iso(fromMs))
     .map((r) => adminBookingView(r, settings));
 
-  const result = { timezone: tz, bookings, events: [], googleError: null };
+  const result = { timezone: tz, bookings, events: timeOffEvents(userId, fromMs, toMs), googleError: null };
   if (google.isGoogleActive(userId)) {
     try {
       const data = await fetchGoogleWindow(userId, fromMs, toMs, { fresh: false });

@@ -1,7 +1,7 @@
-import { get, patch } from '../api.js';
+import { get, patch, del } from '../api.js';
 import {
   h, icon, fmt, capitalize, statusBadge, SOURCE_LABELS, CANCELLED_BY,
-  openDrawer, toast, copyText, withBusy, alertBox, field, GOOGLE_CONNECT_URL,
+  openDrawer, toast, copyText, withBusy, alertBox, field, confirmDialog, GOOGLE_CONNECT_URL,
 } from '../ui.js';
 import { cancelBooking } from './booking-actions.js';
 
@@ -150,6 +150,18 @@ export function openBookingDrawer(id, { app, onChange, onClose } = {}) {
     }
     if (isOwner && b.status === 'cancelled') {
       buttons.push(h('button', { type: 'button', class: 'btn btn-primary', onClick: act(() => update({ action: 'status', status: 'confirmed' }, 'Rezervace obnovena')) }, icon('undo'), 'Obnovit rezervaci'));
+    }
+    if (isOwner && b.seriesId) {
+      buttons.push(h('button', {type:'button',class:'btn btn-secondary',onClick:act(async()=>{
+        const yes=await confirmDialog({title:'Zrušit budoucí termíny série?',
+          message:'Zruší se pouze budoucí aktivní rezervace z této série. Minulé termíny zůstanou v historii.',
+          confirmLabel:'Zrušit zbývající termíny',danger:true});
+        if (!yes) return;
+        const { cancelled }=await del(`/booking-series/${b.seriesId}`);
+        toast(`Zrušeno ${cancelled} termínů ze série`);
+        booking=(await get(`/bookings/${b.id}`)).booking;
+        render();onChange?.(booking);app?.refreshMeta?.();
+      })},icon('repeat'),'Zrušit budoucí termíny série'));
     }
     if (b.status !== 'cancelled') {
       buttons.push(h('button', { type: 'button', class: 'btn btn-danger', style: { marginLeft: 'auto' }, onClick: cancel }, icon('x'), 'Zrušit rezervaci'));

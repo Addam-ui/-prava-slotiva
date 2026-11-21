@@ -4,6 +4,7 @@ import { openBookingDrawer } from './booking-drawer.js';
 import { openNewBookingModal } from './new-booking.js';
 
 const HOUR_PX = 52;
+const DAY_HOUR_PX = 72;
 const pad = (n) => String(n).padStart(2, '0');
 const toMinutes = (time) => {
   const [hh, mm] = time.split(':').map(Number);
@@ -55,7 +56,7 @@ export async function mount({ view, actions, app }) {
   const state = {
     week: mondayOf(app.meta.today), date: app.meta.today,
     mode: ['day', 'week'].includes(rememberedMode) ? rememberedMode : (teamMode ? 'day' : 'week'),
-    focusStaff: 'all', showGoogle: true, settings: null, data: null,
+    focusStaff: 'all', mobileFocusInitialized: false, showGoogle: true, settings: null, data: null,
   };
 
   if (app.meta.team.owner && !app.meta.team.shared) actions.append(h('button', { type: 'button', class: 'btn btn-primary', onClick: () => openNewBookingModal({ app, onCreated: load }) }, icon('plus'), h('span', { class: 'btn-label' }, 'Nová rezervace')));
@@ -66,6 +67,7 @@ export async function mount({ view, actions, app }) {
   const weekMode = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => changeMode('week') }, 'Týden');
   const viewModes = h('div', { class: 'calendar-mode-switch', role: 'group', 'aria-label': 'Zobrazení kalendáře' }, dayMode, weekMode);
   const notice = h('div');
+  const scrollHint = h('p', { class: 'calendar-scroll-hint', hidden: true }, 'Pro zobrazení dalších barberů posuňte kalendář do strany. Čas zůstává vlevo.');
   const card = h('div', { class: 'card week' });
   const legend = h('div', { class: 'legend', style: { marginTop: '12px' } });
 
@@ -85,6 +87,7 @@ export async function mount({ view, actions, app }) {
         : null),
     notice,
     focusBar,
+    scrollHint,
     card,
     legend,
   );
@@ -138,6 +141,7 @@ export async function mount({ view, actions, app }) {
     }
     focusBar.replaceChildren();
     focusBar.hidden = true;
+    scrollHint.hidden = true;
     card.className = 'card week';
     const days = Array.from({ length: 7 }, (_, i) => addDays(state.week, i));
     const today = app.meta.today;
@@ -155,8 +159,8 @@ export async function mount({ view, actions, app }) {
       timed[b.date].push({ kind: 'booking', start, end: Math.max(end, start + 15), booking: b });
     }
 
-    if (state.showGoogle) {
-      for (const e of events) {
+    {
+      for (const e of events.filter(event => event.source === 'time-off' || state.showGoogle)) {
         const s = localParts(e.start);
         const en = localParts(e.end);
         for (const d of days) {
@@ -297,7 +301,16 @@ export async function mount({ view, actions, app }) {
     const people = staff.length ? staff : [{ id: app.meta.user.id, name: app.meta.user.name, workingHours: state.settings.workingHours }];
     if (state.focusStaff !== 'all' && !people.some(person => String(person.id) === state.focusStaff)) state.focusStaff = 'all';
     const isShared = Boolean(app.meta.team.shared && people.length > 1);
+    if (isShared && !state.mobileFocusInitialized) {
+      state.mobileFocusInitialized = true;
+      if (window.matchMedia('(max-width: 700px)').matches) {
+        // Na úzké obrazovce zobrazíme ve výchozím stavu celý blok jednoho barbera.
+        const first = people.find(person => Number(person.id) !== Number(app.meta.team.ownerId)) || people[0];
+        state.focusStaff = String(first.id);
+      }
+    }
     focusBar.hidden = !isShared;
+    scrollHint.hidden = !(isShared && state.focusStaff === 'all');
     focusBar.replaceChildren(...(isShared ? [
       { id: 'all', name: 'Všichni' },
       ...people.map(person => ({ id: String(person.id), name: person.name })),
@@ -311,11 +324,11 @@ export async function mount({ view, actions, app }) {
       ? people.filter(person => String(person.id) === state.focusStaff)
       : people;
     const dayBookings = bookings.filter(b => b.date === day && b.status !== 'cancelled');
-    const dayEvents = state.showGoogle ? events.filter(e => {
+    const dayEvents = events.filter(e => (e.source === 'time-off' || state.showGoogle) && (() => {
       const start = localParts(e.start);
       const end = localParts(e.end);
       return e.allDay ? day >= start.date && day < end.date : day >= start.date && day <= end.date;
-    }) : [];
+    })());
 
     notice.replaceChildren(...(googleError ? [alertBox('warning', 'Kalendář Google není úplný', googleError)] : []));
     let minHour = 24;
@@ -338,14 +351,17 @@ export async function mount({ view, actions, app }) {
     if (minHour >= maxHour) [minHour, maxHour] = [8, 18];
     minHour = Math.max(0, minHour);
     maxHour = Math.min(24, maxHour);
-    const height = (maxHour - minHour) * HOUR_PX;
-    const y = minutes => (minutes - minHour * 60) * HOUR_PX / 60;
+    const height = (maxHour - minHour) * DAY_HOUR_PX;
+    const y = minutes => (minutes - minHour * 60) * DAY_HOUR_PX / 60;
 
     const hours = h('div', { class: 'team-day-hours', style: { height: `${height}px` } },
       Array.from({ length: maxHour - minHour + 1 }, (_, i) =>
-        h('div', { class: 'week-hour-label', style: { top: `${i * HOUR_PX}px` } }, `${pad(minHour + i)}:00`)));
+        h('div', { class: 'week-hour-label', style: { top: `${i * DAY_HOUR_PX}px` } }, `${pad(minHour + i)}:00`)));
     const columns = displayed.map(person => {
       const col = h('div', { class: 'team-day-col', style: { height: `${height}px` } });
+      const absence = dayEvents.find(e => Number(e.staffId) === Number(person.id) && e.allDay && e.source === 'time-off');
+      if (absence) col.append(h('div', { class: 'team-day-absence', style: { height: `${height}px` } },
+        h('span', {}, absence.title)));
       const open = (person.workingHours?.[weekdayOf(day)] || []).map(slot => [toMinutes(slot.from), toMinutes(slot.to)]);
       let cursor = minHour * 60;
       for (const [from, to] of open) {
@@ -371,7 +387,7 @@ export async function mount({ view, actions, app }) {
         const left = 100 * item.lane / item.lanes;
         const width = 100 / item.lanes;
         const top = y(item.start);
-        const blockHeight = Math.max(21, y(item.end) - top - 2);
+        const blockHeight = Math.max(15, y(item.end) - top - 3);
         const style = { top: `${top+1}px`, height: `${blockHeight}px`, left: `calc(${left}% + 3px)`, width: `calc(${width}% - 6px)` };
         if (item.kind === 'booking') {
           const b = item.booking;
@@ -379,8 +395,8 @@ export async function mount({ view, actions, app }) {
             style: { ...style, background: b.color, color: readableInk(b.color) },
             title: `${b.time}–${b.endTime} · ${b.customer.name} · ${b.serviceName}`,
             onClick: () => openBookingDrawer(b.id, { app, onChange: load }),
-          }, h('b', {}, b.customer.name), h('span', {}, `${b.time}–${b.endTime}`),
-          blockHeight > 54 ? h('span', {}, b.serviceName) : null));
+          }, h('b', {}, b.customer.name), blockHeight > 36 ? h('span', {}, `${b.time}–${b.endTime}`) : null,
+          blockHeight > 62 ? h('span', {}, b.serviceName) : null));
         } else {
           col.append(h('div', { class: 'ev ev-busy', style,
             title: item.event.title }, h('b', {}, item.event.title)));
@@ -396,7 +412,8 @@ export async function mount({ view, actions, app }) {
       card.replaceChildren(h('div', { class:'team-day-empty' }, 'Zatím nejsou přidaní žádní zaměstnanci.'));
       return;
     }
-    const gridStyle = { gridTemplateColumns: `56px repeat(${displayed.length}, minmax(205px, 1fr))` };
+    card.style.setProperty('--staff-count', String(displayed.length));
+    const gridStyle = { gridTemplateColumns: `var(--time-col) repeat(${displayed.length}, minmax(var(--staff-col), 1fr))` };
     const headerCells = columns.map(({ person, bookedCount, allDay }) => {
       const avatar = person.avatar
         ? h('img', { class: 'team-day-avatar', src: person.avatar, alt: '' })

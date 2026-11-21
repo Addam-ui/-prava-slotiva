@@ -4,6 +4,8 @@ import { registerServiceWorker } from './pwa.js';
 import * as overview from './views/overview.js';
 import * as bookings from './views/bookings.js';
 import * as calendar from './views/calendar.js';
+import * as timeOff from './views/time-off.js';
+import * as notificationView from './views/notifications.js';
 import * as services from './views/services.js';
 import * as settings from './views/settings.js';
 import * as integration from './views/integration.js';
@@ -15,6 +17,8 @@ const ROUTES = [
   { path: 'prehled', title: 'Přehled', icon: 'overview', view: overview, ownerOnly: true },
   { path: 'rezervace', title: 'Rezervace', icon: 'list', view: bookings },
   { path: 'kalendar', title: 'Kalendář', icon: 'calendar', view: calendar },
+  { path: 'volno', title: 'Volno a dovolené', icon: 'calendar', view: timeOff },
+  { path: 'oznameni', title: 'Oznámení', icon: 'bell', view: notificationView },
   { path: 'tym', title: 'Správa týmu', icon: 'user', view: team, ownerOnly: true },
   { path: 'muj-profil', title: 'Můj profil', icon: 'user', view: staffProfile, staffOnly: true },
   { path: 'sluzby', title: 'Služby', icon: 'layers', view: services, group: 'Nastavení', ownerOnly: true },
@@ -50,6 +54,7 @@ export const app = {
       setTimezone(meta.timezone);
       renderSidebar();
       renderTeamSwitcher();
+      refreshNotificationBadge();
     } catch {
       /* obnoví se při další akci */
     }
@@ -157,6 +162,7 @@ function renderShell() {
   });
   renderSidebar();
   renderTeamSwitcher();
+  refreshNotificationBadge();
 }
 
 /** Výběr je vidět na každé stránce a aktualizuje serverový scope. */
@@ -176,6 +182,29 @@ function renderTeamSwitcher() {
   target.replaceChildren(h('label', { class:'team-switch-label' }, icon('calendar', 16), 'Kalendář', input));
 }
 
+async function refreshNotificationBadge() {
+  try {
+    const { unread } = await get('/notifications');
+    const badge = document.querySelector('.nav a[data-path="oznameni"] .count');
+    if (badge) { badge.hidden = !unread; badge.textContent = unread || ''; }
+  } catch { /* ztráta spojení nemá rozbít dashboard */ }
+}
+window.addEventListener('slotiva:notifications-changed', refreshNotificationBadge);
+
+/** Čerstvé počty bez opětovného načtení aplikace; když je karta skrytá, nezahlcujeme server. */
+async function refreshNavigationCounts() {
+  if (document.visibilityState === 'hidden' || !app.meta) return;
+  try {
+    const result = await get('/bookings?limit=1');
+    app.counts = result.counts;
+    renderSidebar();
+  } catch { /* offline: aktuální počítadla ponecháme */ }
+  await refreshNotificationBadge();
+}
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshNavigationCounts();
+});
+
 function renderSidebar() {
   const foot = $('#sidebar-foot');
   if (!app.meta || !foot) return;
@@ -192,13 +221,23 @@ function renderSidebar() {
   ];
   foot.replaceChildren(...sidebarItems.filter(Boolean));
 
+  // Počty v menu mají klidný, srozumitelný vzhled. Žádné zavádějící „1 !“.
   const counts = app.counts;
-  const badge = document.querySelector('.nav a[data-path="rezervace"] .count');
+  const link = document.querySelector('.nav a[data-path="rezervace"]');
+  const badge = link?.querySelector('.count');
   if (counts && badge) {
-    const attention = counts.attention > 0;
-    badge.hidden = !(attention || counts.upcoming);
-    badge.textContent = attention ? `${counts.attention} !` : counts.upcoming;
-    badge.classList.toggle('is-warning', attention);
+    const attentionCount = Number(counts.attention) || 0;
+    const upcomingCount = Number(counts.upcoming) || 0;
+    const needsAttention = attentionCount > 0;
+    const displayed = needsAttention ? attentionCount : upcomingCount;
+    badge.hidden = displayed <= 0;
+    badge.textContent = displayed > 99 ? '99+' : String(displayed);
+    badge.classList.toggle('is-attention', needsAttention);
+    const description = needsAttention
+      ? `${attentionCount} rezervací vyžaduje pozornost (potvrzení nebo synchronizace)`
+      : `${upcomingCount} nadcházejících rezervací`;
+    badge.title = displayed ? description : '';
+    link.setAttribute('aria-label', displayed ? `Rezervace · ${description}` : 'Rezervace');
   }
 }
 
@@ -284,6 +323,7 @@ async function route() {
     });
     if (current === entry) entry.instance = instance;
     else instance?.cleanup?.();
+    refreshNotificationBadge();
   } catch (err) {
     if (err.status === 401) return;
     console.error(err);
@@ -319,4 +359,6 @@ window.addEventListener('auth:required', () => {
   await route();
   handleQuery();
   registerServiceWorker();
+  // Rozumný polling pro interní oznámení (bez placených push/SMS služeb).
+  setInterval(refreshNavigationCounts, 60_000);
 })();

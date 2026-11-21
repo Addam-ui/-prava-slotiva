@@ -101,6 +101,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_bookings_event  ON bookings(google_event_id);
   CREATE INDEX IF NOT EXISTS idx_resets_user     ON password_resets(user_id);
 
+  CREATE TABLE IF NOT EXISTS staff_time_off (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    start_utc TEXT NOT NULL,
+    end_utc TEXT NOT NULL,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'other',
+    note TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT ${NOW},
+    updated_at TEXT NOT NULL DEFAULT ${NOW},
+    CHECK (end_utc > start_utc)
+  );
+  CREATE INDEX IF NOT EXISTS idx_time_off_staff ON staff_time_off(user_id, status, start_utc, end_utc);
+
   CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -143,4 +159,33 @@ addColumn('users', 'team_owner_id', 'INTEGER REFERENCES users(id) ON DELETE CASC
 addColumn('users', 'team_active', 'INTEGER NOT NULL DEFAULT 1');
 addColumn('users', 'avatar_data', "TEXT NOT NULL DEFAULT ''");
 addColumn('users','verified_phone',"TEXT NOT NULL DEFAULT ''");
+
+// V6.2: opakované rezervace a interní notifikační centrum.
+// Migrace je aditivní, existující rezervace a účty zůstávají beze změny.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS booking_series (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    interval_weeks INTEGER NOT NULL CHECK (interval_weeks IN (1,2)),
+    occurrence_count INTEGER NOT NULL CHECK (occurrence_count BETWEEN 2 AND 12),
+    created_at TEXT NOT NULL DEFAULT ${NOW}
+  );
+  CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+    event_key TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    read_at TEXT,
+    created_at TEXT NOT NULL DEFAULT ${NOW},
+    UNIQUE(user_id,event_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_notifications_user_date ON notifications(user_id,created_at DESC,id DESC);
+  CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id,read_at);
+`);
+addColumn('bookings','series_id','INTEGER REFERENCES booking_series(id) ON DELETE SET NULL');
+db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_series ON bookings(series_id,start_utc)');
+
 db.exec('CREATE INDEX IF NOT EXISTS idx_users_team_owner ON users(team_owner_id, team_active)');

@@ -11,6 +11,9 @@ import * as users from '../users.js';
 import * as team from '../team.js';
 import { calendarRoster } from '../calendar-roster.js';
 import * as bookings from '../bookings.js';
+import * as timeOff from '../time-off.js';
+import * as recurring from '../recurring.js';
+import * as notifications from '../notifications.js';
 import * as google from '../google.js';
 import { mailEnabled, verifyMail, sendMail } from '../mailer.js';
 import { getDashboardStats } from '../stats.js';
@@ -34,14 +37,18 @@ appRouter.use((req, res, next) => {
   if (team.isOwner(req.user)) return next();
   const path = req.path;
   const readOnly = req.method === 'GET' && (
-    ['/meta', '/overview', '/calendar', '/bookings', '/settings'].includes(path)
+    ['/meta', '/overview', '/calendar', '/bookings', '/settings', '/time-off', '/notifications'].includes(path)
     || /^\/bookings\/\d+$/.test(path)
   );
+  const ownTimeOff = (req.method === 'POST' && path === '/time-off')
+    || (req.method === 'PATCH' && /^\/time-off\/\d+$/.test(path) && req.body?.action === 'cancel');
   const ownProfile = req.method === 'PUT' && ['/profile', '/avatar'].includes(path);
   const ownPassword = req.method === 'POST' && path === '/password';
   const ownBookingStatus = req.method === 'PATCH' && /^\/bookings\/\d+$/.test(path)
     && req.body?.action === 'status' && ['confirmed', 'cancelled', 'no_show'].includes(req.body?.status);
-  if (readOnly || ownProfile || ownPassword || ownBookingStatus) return next();
+  const ownNotifications = (req.method === 'POST' && path === '/notifications/read-all')
+    || (req.method === 'PATCH' && /^\/notifications\/\d+$/.test(path));
+  if (readOnly || ownProfile || ownPassword || ownBookingStatus || ownTimeOff || ownNotifications) return next();
   next(new AppError(403, 'Tato akce je dostupná pouze majiteli firmy.'));
 });
 
@@ -151,6 +158,45 @@ appRouter.put('/team/:id', async (req, res) => {
   res.json({ member: { id:user.id, name:user.name, email:user.email, avatar:user.avatar_data, active:Boolean(user.team_active) } });
 });
 
+/* ── dovolené, přestávky a žádosti o volno ── */
+const leaveScope = (req) => team.isOwner(req.user) ? team.calendarScope(req.user, 'all') : [Number(req.user.id)];
+
+appRouter.get('/time-off', (req, res) => {
+  const dates = [String(req.query.from || ''), String(req.query.to || '')];
+  if (dates.some(date => date && !/^\d{4}-\d{2}-\d{2}$/.test(date))) throw badRequest('Neplatné datum.');
+  res.json({ items: timeOff.listTimeOff(leaveScope(req), dates[0], dates[1]),
+    staff: leaveScope(req).map(id => ({ id, name: users.getUserRow(id)?.name || 'Zaměstnanec' })) });
+});
+
+appRouter.post('/time-off', (req, res) => {
+  const isOwner = team.isOwner(req.user);
+  const staffId = isOwner ? Number(req.body?.staffId || req.user.id) : Number(req.user.id);
+  if (!leaveScope(req).includes(staffId)) throw new AppError(403, 'Tento zaměstnanec nepatří do vašeho týmu.');
+  const item = timeOff.createTimeOff({ actorId: req.user.id, staffId, isOwner, data: req.body || {} });
+  notifications.timeOffNotice(item, item.status, req.user.id);
+  res.status(201).json({ item });
+});
+
+appRouter.patch('/time-off/:id', (req, res) => {
+  const item = timeOff.getTimeOff(req.params.id);
+  if (!leaveScope(req).includes(item.staffId)) throw new AppError(404, 'Volno nebylo nalezeno.');
+  const changed = timeOff.changeTimeOff(item.id, req.body?.action, req.user.id, team.isOwner(req.user));
+  notifications.timeOffNotice(changed, changed.status, req.user.id);
+  res.json({ item: changed });
+});
+
+/* ── notifikace, vždy pouze aktuálně přihlášeného uživatele ── */
+appRouter.get('/notifications', (req, res) => {
+  res.json(notifications.listNotifications(req.user.id));
+});
+appRouter.patch('/notifications/:id', (req, res) => {
+  notifications.readNotification(req.user.id, req.params.id);
+  res.json({ ok: true });
+});
+appRouter.post('/notifications/read-all', (req, res) => {
+  res.json({ marked: notifications.readAllNotifications(req.user.id) });
+});
+
 /* ── rezervace ── */
 
 appRouter.get('/bookings', (req, res) => {
@@ -175,6 +221,17 @@ appRouter.get('/bookings.csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="rezervace-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.send(String.fromCharCode(0xfeff) + [header.join(';'), ...lines].join('\r\n'));
+});
+
+appRouter.post('/booking-series', async (req, res) => {
+  if (!team.isOwner(req.user)) throw new AppError(403, 'Opakované rezervace může vytvářet pouze majitel.');
+  if (scope(req).length !== 1) throw badRequest('Vyberte konkrétního zaměstnance, ne společný kalendář.');
+  const series = await recurring.createSeries(uid(req), req.body || {});
+  res.status(201).json(series);
+});
+appRouter.delete('/booking-series/:id', async (req, res) => {
+  if (!team.isOwner(req.user) || scope(req).length !== 1) throw new AppError(403, 'Vyberte konkrétního zaměstnance.');
+  res.json(await recurring.cancelRemainingSeries(uid(req), req.params.id));
 });
 
 appRouter.get('/bookings/:id', (req, res) => {
