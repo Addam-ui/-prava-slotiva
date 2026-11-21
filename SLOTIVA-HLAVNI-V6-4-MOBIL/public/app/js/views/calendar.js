@@ -1,5 +1,5 @@
 import { get } from '../api.js';
-import { h, icon, fmt, addDays, localParts, readableInk, alertBox, switchControl } from '../ui.js';
+import { h, icon, fmt, addDays, localParts, readableInk, alertBox, switchControl, statusBadge } from '../ui.js';
 import { openBookingDrawer } from './booking-drawer.js';
 import { openNewBookingModal } from './new-booking.js';
 
@@ -52,11 +52,12 @@ function layoutLanes(items) {
 
 export async function mount({ view, actions, app }) {
   const teamMode = Boolean(app.meta.team.owner && app.meta.team.members?.length);
+  const phoneQuery = window.matchMedia('(max-width: 700px)');
   const rememberedMode = sessionStorage.getItem('slotiva-calendar-mode');
   const state = {
     week: mondayOf(app.meta.today), date: app.meta.today,
     mode: ['day', 'week'].includes(rememberedMode) ? rememberedMode : (teamMode ? 'day' : 'week'),
-    focusStaff: 'all', mobileFocusInitialized: false, showGoogle: true, settings: null, data: null,
+    focusStaff: 'all', mobileFocusInitialized: false, mobileLayout: 'agenda', showGoogle: true, settings: null, data: null,
   };
 
   if (app.meta.team.owner && !app.meta.team.shared) actions.append(h('button', { type: 'button', class: 'btn btn-primary', onClick: () => openNewBookingModal({ app, onCreated: load }) }, icon('plus'), h('span', { class: 'btn-label' }, 'Nová rezervace')));
@@ -66,6 +67,11 @@ export async function mount({ view, actions, app }) {
   const dayMode = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => changeMode('day') }, 'Den');
   const weekMode = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => changeMode('week') }, 'Týden');
   const viewModes = h('div', { class: 'calendar-mode-switch', role: 'group', 'aria-label': 'Zobrazení kalendáře' }, dayMode, weekMode);
+  const agendaButton = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', 'aria-pressed': 'true',
+    onClick: () => { state.mobileLayout = 'agenda'; render(); } }, icon('list', 16), 'Agenda');
+  const timelineButton = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', 'aria-pressed': 'false',
+    onClick: () => { state.mobileLayout = 'timeline'; render(); } }, icon('calendar', 16), 'Časová osa');
+  const mobileLayoutSwitch = h('div', { class: 'mobile-calendar-layout', role: 'group', 'aria-label': 'Mobilní podoba kalendáře', hidden: true }, agendaButton, timelineButton);
   const notice = h('div');
   const scrollHint = h('p', { class: 'calendar-scroll-hint', hidden: true }, 'Pro zobrazení dalších barberů posuňte kalendář do strany. Čas zůstává vlevo.');
   const card = h('div', { class: 'card week' });
@@ -85,6 +91,7 @@ export async function mount({ view, actions, app }) {
       app.meta.team.owner && app.meta.google.state === 'connected'
         ? switchControl({ checked: true, label: 'Události z Google Kalendáře', onChange: (value) => { state.showGoogle = value; render(); } })
         : null),
+    mobileLayoutSwitch,
     notice,
     focusBar,
     scrollHint,
@@ -134,6 +141,11 @@ export async function mount({ view, actions, app }) {
 
   function render() {
     if (!state.data) return;
+    mobileLayoutSwitch.hidden = state.mode !== 'day' || !phoneQuery.matches;
+    agendaButton.classList.toggle('is-active', state.mobileLayout === 'agenda');
+    timelineButton.classList.toggle('is-active', state.mobileLayout === 'timeline');
+    agendaButton.setAttribute('aria-pressed', String(state.mobileLayout === 'agenda'));
+    timelineButton.setAttribute('aria-pressed', String(state.mobileLayout === 'timeline'));
     const { bookings, events, googleError } = state.data;
     if (state.mode === 'day') {
       renderDay();
@@ -310,7 +322,7 @@ export async function mount({ view, actions, app }) {
       }
     }
     focusBar.hidden = !isShared;
-    scrollHint.hidden = !(isShared && state.focusStaff === 'all');
+    scrollHint.hidden = !(isShared && state.focusStaff === 'all' && (!phoneQuery.matches || state.mobileLayout === 'timeline'));
     focusBar.replaceChildren(...(isShared ? [
       { id: 'all', name: 'Všichni' },
       ...people.map(person => ({ id: String(person.id), name: person.name })),
@@ -331,6 +343,10 @@ export async function mount({ view, actions, app }) {
     })());
 
     notice.replaceChildren(...(googleError ? [alertBox('warning', 'Kalendář Google není úplný', googleError)] : []));
+    if (phoneQuery.matches && state.mobileLayout === 'agenda') {
+      renderMobileAgenda(displayed, dayBookings, dayEvents);
+      return;
+    }
     let minHour = 24;
     let maxHour = 0;
     for (const person of displayed) {
@@ -433,7 +449,46 @@ export async function mount({ view, actions, app }) {
       h('span', {}, 'Klikněte na rezervaci pro její detail'));
   }
 
+  /** Přehledné a plně ovladatelné rezervace na telefonu – bez přesahující časové mřížky. */
+  function renderMobileAgenda(people, bookings, events) {
+    card.className = 'card mobile-calendar-agenda';
+    const groups = people.map(person => {
+      const personBookings = bookings.filter(b => Number(b.staffId) === Number(person.id))
+        .sort((a, b) => a.time.localeCompare(b.time));
+      const personEvents = events.filter(event => Number(event.staffId) === Number(person.id));
+      const entries = [
+        ...personBookings.map(booking => ({ kind: 'booking', sort: booking.time, booking })),
+        ...personEvents.map(event => ({ kind: 'event', sort: event.allDay ? '00:00' : localParts(event.start).time, event })),
+      ].sort((a, b) => a.sort.localeCompare(b.sort));
+      const heading = h('header', { class: 'mobile-agenda-person' },
+        person.avatar ? h('img', { src: person.avatar, alt: '', class: 'team-day-avatar' }) : h('span', { class:'team-day-avatar-placeholder' }, icon('user', 18)),
+        h('strong', {}, person.name), h('span', { class:'mobile-agenda-count' }, `${personBookings.length} rezervací`));
+      const items = entries.map(entry => {
+        if (entry.kind === 'event') {
+          const event = entry.event;
+          const end = event.allDay ? 'Celý den' : `${localParts(event.start).time}–${localParts(event.end).time}`;
+          return h('div', { class: 'mobile-agenda-event' }, icon('calendar', 18),
+            h('div', {}, h('strong', {}, event.title), h('span', {}, end)));
+        }
+        const b = entry.booking;
+        return h('button', { type:'button', class:'mobile-agenda-booking',
+          onClick: () => openBookingDrawer(b.id, { app, onChange: load }),
+          'aria-label': `Otevřít rezervaci ${b.customer.name}, ${b.time}` },
+          h('span', { class:'mobile-agenda-time' }, b.time, h('small', {}, b.endTime)),
+          h('span', { class:'mobile-agenda-details' }, h('strong', {}, b.customer.name), h('small', {}, b.serviceName)),
+          h('span', { class:'mobile-agenda-status' }, statusBadge(b)), icon('chevronRight', 17));
+      });
+      return h('section', { class:'mobile-agenda-group' }, heading,
+        items.length ? h('div', { class:'mobile-agenda-items' }, items)
+          : h('p', { class:'mobile-agenda-empty' }, 'V tento den nejsou žádné rezervace.'));
+    });
+    card.replaceChildren(...groups);
+    legend.replaceChildren(h('span', {}, 'Klepnutím na rezervaci otevřete detail a potvrzení.'));
+  }
+
+  const handleViewportChange = () => { if (state.data) render(); };
+  phoneQuery.addEventListener('change', handleViewportChange);
   await load();
   const timer = setInterval(() => state.data && render(), 60_000);
-  return { cleanup: () => clearInterval(timer) };
+  return { cleanup: () => { clearInterval(timer); phoneQuery.removeEventListener('change', handleViewportChange); } };
 }

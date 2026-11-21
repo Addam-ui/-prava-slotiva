@@ -66,6 +66,62 @@ let current = null;
 
 const initials = (name) => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'S';
 
+/** Mobilní navigace je samostatná, ale používá stejné role a hash trasy jako sidebar. */
+function mobileLinks() {
+  const visible = routes();
+  const primary = app.meta?.team?.owner
+    ? ['prehled', 'kalendar', 'rezervace', 'oznameni']
+    : ['kalendar', 'rezervace', 'volno', 'oznameni'];
+  return primary.map(path => visible.find(route => route.path === path)).filter(Boolean);
+}
+function closeNavigation() {
+  const shell = $('#app');
+  if (!shell) return;
+  shell.classList.remove('nav-open');
+  shell.querySelector('.menu-btn')?.setAttribute('aria-expanded', 'false');
+  shell.querySelector('.mobile-more')?.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('mobile-menu-open');
+}
+function toggleNavigation() {
+  const shell = $('#app');
+  if (!shell) return;
+  const open = shell.classList.toggle('nav-open');
+  shell.querySelector('.menu-btn')?.setAttribute('aria-expanded', String(open));
+  shell.querySelector('.mobile-more')?.setAttribute('aria-expanded', String(open));
+  document.body.classList.toggle('mobile-menu-open', open);
+  if (open) shell.querySelector('.sidebar .nav a.is-active, .sidebar .nav a')?.focus({ preventScroll: true });
+}
+function mobileNav() {
+  const nav = h('nav', { class: 'mobile-bottom-nav', 'aria-label': 'Mobilní navigace' });
+  for (const route of mobileLinks()) {
+    nav.append(h('a', { class: 'mobile-bottom-link', href: `#/${route.path}`, 'data-mobile-path': route.path,
+      'aria-label': route.title }, icon(route.icon, 21), h('span', {}, route.title),
+      route.path === 'oznameni' ? h('span', { class: 'mobile-nav-count', hidden: true }) : null));
+  }
+  nav.append(h('button', { type: 'button', class: 'mobile-bottom-link mobile-more',
+    'aria-label': 'Další nabídka', 'aria-controls': 'mobile-sidebar', 'aria-expanded': 'false',
+    onClick: toggleNavigation }, icon('menu', 21), h('span', {}, 'Více')));
+  return nav;
+}
+function syncMobileNavigation() {
+  const path = location.hash.replace(/^#\/?/, '').split('/')[0];
+  for (const link of document.querySelectorAll('[data-mobile-path]')) {
+    const active = link.dataset.mobilePath === path;
+    link.classList.toggle('is-active', active);
+    if (active) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  document.querySelector('.mobile-more')?.classList.toggle('is-active',
+    Boolean(path && !document.querySelector(`.mobile-bottom-link[data-mobile-path="${path}"]`)));
+}
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('#app')?.classList.contains('nav-open')) {
+    closeNavigation();
+    document.querySelector('.menu-btn')?.focus();
+  }
+});
+
+
 /* ───────────── motiv ───────────── */
 
 const isDark = () => (document.documentElement.dataset.theme
@@ -143,23 +199,27 @@ function renderShell() {
   }
 
   root.replaceChildren(h('div', { class: 'app', id: 'app' },
-    h('aside', { class: 'sidebar' },
+    h('aside', { class: 'sidebar', id: 'mobile-sidebar' },
       h('a', { class: 'brand', href: '#/prehled', 'aria-label': 'Slotiva – přehled' },
         h('span', { class: 'brand-logo', html: LOGO }),
         h('span', { class: 'brand-word' }, 'Slotiva')),
+      h('button', { type: 'button', class: 'btn btn-ghost btn-icon sidebar-close', 'aria-label': 'Zavřít nabídku', onClick: closeNavigation }, icon('x', 20)),
       nav,
       h('div', { class: 'sidebar-foot', id: 'sidebar-foot' })),
     h('div', { class: 'content' },
       h('header', { class: 'topbar' },
-        h('button', { type: 'button', class: 'btn btn-ghost btn-icon menu-btn', 'aria-label': 'Menu', onClick: () => $('#app').classList.toggle('nav-open') }, icon('menu', 18)),
+        h('button', { type: 'button', class: 'btn btn-ghost btn-icon menu-btn', 'aria-label': 'Otevřít nabídku', 'aria-controls': 'mobile-sidebar', 'aria-expanded': 'false', onClick: toggleNavigation }, icon('menu', 20)),
         h('div', { style: { minWidth: '0' } }, h('h1', { id: 'page-title' }), h('div', { class: 'subtitle', id: 'page-subtitle' })),
         h('div', { class: 'team-switch', id: 'team-switch' }),
         h('div', { class: 'topbar-actions', id: 'page-actions' })),
-      h('main', { class: 'view', id: 'view' }))));
+      h('main', { class: 'view', id: 'view' })),
+    h('button', { type: 'button', class: 'mobile-nav-backdrop', 'aria-label': 'Zavřít nabídku', onClick: closeNavigation }),
+    mobileNav()));
 
   $('#app').addEventListener('click', (e) => {
-    if (e.target === $('#app') || e.target.closest('.nav a')) $('#app').classList.remove('nav-open');
+    if (e.target.closest('.nav a, .mobile-bottom-nav a')) closeNavigation();
   });
+  syncMobileNavigation();
   renderSidebar();
   renderTeamSwitcher();
   refreshNotificationBadge();
@@ -186,7 +246,9 @@ async function refreshNotificationBadge() {
   try {
     const { unread } = await get('/notifications');
     const badge = document.querySelector('.nav a[data-path="oznameni"] .count');
-    if (badge) { badge.hidden = !unread; badge.textContent = unread || ''; }
+    if (badge) { badge.hidden = !unread; badge.textContent = unread > 99 ? '99+' : unread || ''; }
+    const mobile = document.querySelector('.mobile-nav-count');
+    if (mobile) { mobile.hidden = !unread; mobile.textContent = unread > 99 ? '99+' : unread || ''; }
   } catch { /* ztráta spojení nemá rozbít dashboard */ }
 }
 window.addEventListener('slotiva:notifications-changed', refreshNotificationBadge);
@@ -293,6 +355,8 @@ async function route() {
     return;
   }
   document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('is-active', a.dataset.path === r.path));
+  closeNavigation();
+  syncMobileNavigation();
 
   if (current?.route === r) {
     current.instance?.update?.({ params });

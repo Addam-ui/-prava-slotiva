@@ -3,7 +3,7 @@
    Ukládá se jen vzhled aplikace (stránka, styly, skripty, písma) – rezervace
    a nastavení se vždy načítají ze serveru, aby uživatel nikdy neviděl stará data. */
 
-const VERSION = 'slotiva-app-62-recurring-notifications';
+const VERSION = 'slotiva-app-64-mobile-dashboard';
 
 /* Soubory, bez kterých se dashboard nespustí. */
 const SHELL = [
@@ -13,6 +13,7 @@ const SHELL = [
   '/app/js/app.js',
   '/app/js/api.js',
   '/app/js/photo.js',
+  '/app/js/live-preview.js',
   '/app/js/ui.js',
   '/app/js/charts.js',
   '/app/js/pwa.js',

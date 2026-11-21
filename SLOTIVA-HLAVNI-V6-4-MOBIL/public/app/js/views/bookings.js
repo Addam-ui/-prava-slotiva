@@ -190,6 +190,21 @@ export async function mount({ view, actions, params, app }) {
     app.meta.team.owner ? h('td', { class: 'hide-sm', style: { width: '48px', textAlign: 'center' } }, googleCell(b)) : null,
     h('td', { class: 'actions' }, rowMenu(b))));
 
+    // Mobil nepotřebuje zmenšenou tabulku: celý termín je jedna dotyková karta.
+    // Akce zůstávají samostatně, aby se neotevřel detail při kliknutí na menu.
+    const mobileCards = h('div', { class: 'mobile-booking-list' }, items.map(b =>
+      h('article', { class: 'mobile-booking-card' },
+        h('button', { type: 'button', class: 'mobile-booking-open', onClick: () => openBooking(b.id),
+          'aria-label': `Detail rezervace ${b.customer.name}, ${fmt.dateMedium(b.date)} v ${b.time}` },
+          h('div', { class: 'mobile-booking-when' },
+            h('strong', {}, `${capitalize(fmt.dateMedium(b.date))} · ${b.time}`),
+            h('span', {}, `${b.time}–${b.endTime}`)),
+          h('strong', { class: 'mobile-booking-customer' }, b.customer.name),
+          h('span', { class: 'mobile-booking-service' }, b.serviceName, ' · ', fmt.duration(b.durationMin),
+            app.meta.team.shared && b.staffName ? ` · ${b.staffName}` : ''),
+          h('span', { class: 'mobile-booking-status' }, statusBadge(b))),
+        h('div', { class: 'mobile-booking-action' }, rowMenu(b)))));
+
     const end = Math.min(state.offset + PAGE_SIZE, total);
     card.replaceChildren(
       h('div', { class: 'table-wrap' },
@@ -203,6 +218,7 @@ export async function mount({ view, actions, params, app }) {
             app.meta.team.owner ? h('th', { scope: 'col', class: 'hide-sm', style: { textAlign: 'center' }, title: 'Google Kalendář' }, 'Google') : null,
             h('th', { scope: 'col', class: 'actions' }, h('span', { class: 'sr-only' }, 'Akce')))),
           h('tbody', {}, rows))),
+      mobileCards,
       h('div', { class: 'pager' },
         h('span', {}, total > PAGE_SIZE ? `${state.offset + 1}–${end} z ${fmt.number(total)}` : plural(total, BOOKING_FORMS)),
         total > PAGE_SIZE

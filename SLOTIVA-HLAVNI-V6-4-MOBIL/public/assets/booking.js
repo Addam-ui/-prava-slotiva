@@ -2,6 +2,8 @@ import { $, h, icon, api, applyBrand, fmt, reportHeightToParent, postToParent } 
 
 const params = new URLSearchParams(location.search);
 const isEmbed = params.has('embed');
+const isPreview = params.has('slotivaPreview') && window.parent !== window;
+let previewDraft = null;
 const slug = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || '');
 const pageApi = `/pages/${encodeURIComponent(slug)}`;
 if (isEmbed) document.body.classList.add('embed');
@@ -162,6 +164,11 @@ function validateLocal() {
 
 async function submit(event) {
   event.preventDefault();
+  if (isPreview) {
+    state.submitError = 'Toto je pouze náhled. Rezervaci lze vytvořit až na veřejné stránce.';
+    render();
+    return;
+  }
   if (state.submitting) return;
   const honeypot = $('input[name="website"]')?.value || '';
 
@@ -555,6 +562,54 @@ function render() {
   if (focusKey) document.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]:not(:disabled)`)?.focus({ preventScroll: true });
 }
 
+/** Používá se v ostré stránce i v náhledu (včetně odstranění pozadí). */
+function applyAppearance(config) {
+  applyBrand(config.brandColor);
+  const appearance = config.appearance || {};
+  document.body.style.backgroundColor = appearance.backgroundColor || '';
+  document.body.style.backgroundImage = appearance.background ? `linear-gradient(#0009,#0009),url("${appearance.background}")` : 'none';
+  document.body.classList.toggle('custom-background', Boolean(appearance.background));
+  document.title = `Online rezervace – ${config.business.name}`;
+}
+
+/** Pouze stejný origin a skutečně vložené iframe může změnit lokální náhled. */
+function receivePreview(event) {
+  if (!isPreview || event.source !== window.parent || event.origin !== window.location.origin) return;
+  if (event.data?.type !== 'slotiva:preview-settings') return;
+  const data = event.data;
+  previewDraft = data;
+  if (!state.config) return;
+  if (data.business && typeof data.business === 'object') {
+    const allowed = ['name', 'tagline', 'description', 'address', 'phone', 'email', 'website'];
+    const business = {};
+    for (const key of allowed) if (typeof data.business[key] === 'string') business[key] = data.business[key].slice(0, 1000);
+    state.config.business = { ...state.config.business, ...business };
+  }
+  if (/^#[0-9a-f]{6}$/i.test(data.brandColor || '')) state.config.brandColor = data.brandColor;
+  if (data.appearance && typeof data.appearance === 'object') {
+    const appearance = {};
+    for (const key of ['logo', 'background']) {
+      const value = data.appearance[key];
+      if (typeof value === 'string' && value.length < 700000 && (!value || /^data:image\/(?:webp|png|jpeg);base64,/i.test(value))) appearance[key] = value;
+    }
+    if (/^#[0-9a-f]{6}$/i.test(data.appearance.backgroundColor || '')) appearance.backgroundColor = data.appearance.backgroundColor;
+    state.config.appearance = { ...state.config.appearance, ...appearance };
+  }
+  applyAppearance(state.config);
+  render();
+}
+
+function announcePreview() {
+  if (!isPreview) return;
+  document.body.classList.add('live-booking-preview');
+  if (!document.querySelector('.live-booking-preview-banner')) {
+    document.body.append(h('div', { class: 'live-booking-preview-banner', role: 'status' }, 'NÁHLED · Rezervace se neodesílají'));
+  }
+  if (previewDraft) receivePreview({ source: window.parent, origin: window.location.origin, data: previewDraft });
+  window.parent.postMessage({ type: 'slotiva:preview-ready' }, window.location.origin);
+}
+if (isPreview) window.addEventListener('message', receivePreview);
+
 async function init() {
   if (isEmbed) reportHeightToParent();
   try {
@@ -567,20 +622,16 @@ async function init() {
     return;
   }
 
-  applyBrand(state.config.brandColor);
-  const appearance = state.config.appearance || {};
-  if (appearance.backgroundColor) document.body.style.backgroundColor = appearance.backgroundColor;
-  if (appearance.background) document.body.style.backgroundImage = `linear-gradient(#0009,#0009),url("${appearance.background}")`;
-  document.body.classList.toggle('custom-background', Boolean(appearance.background));
-  document.title = `Online rezervace – ${state.config.business.name}`;
+  applyAppearance(state.config);
   state.month = monthOf(state.config.today);
 
   const preselected = params.get('service') || params.get('sluzba');
-  if (state.config.staff?.length) { state.config.services = []; state.step = 'staff'; return render(); }
+  if (state.config.staff?.length) { state.config.services = []; state.step = 'staff'; render(); announcePreview(); return; }
   const service = state.config.services.find((s) => String(s.id) === preselected)
     || (state.config.services.length === 1 ? state.config.services[0] : null);
   if (service) selectService(service);
   else render();
+  announcePreview();
 }
 
 init();

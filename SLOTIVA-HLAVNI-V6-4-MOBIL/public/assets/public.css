@@ -463,3 +463,14 @@ body.custom-background { background-size: cover; background-position: center; ba
 .staff-avatar { width:90px; height:90px; object-fit:cover; border-radius:50%; }
 .staff-avatar-default { display:grid; place-items:center; background:#244043; font-weight:700; font-size:26px; }
 .staff-card-name { font-size:18px; font-weight:700; }
+
+
+/* Náhled v editoru nikdy neodesílá rezervaci; používá stejné komponenty jako zákaznická stránka. */
+.live-booking-preview-banner {
+  position: fixed; z-index: 100; bottom: 12px; left: 50%; transform: translateX(-50%);
+  border-radius: 999px; padding: 9px 15px; white-space: nowrap;
+  font-size: 11px; font-weight: 800; letter-spacing: .055em;
+  color: #ffffff; background: #183c3c; box-shadow: 0 8px 30px #0004;
+  pointer-events: none;
+}
+.live-booking-preview .page { padding-bottom: 58px; }

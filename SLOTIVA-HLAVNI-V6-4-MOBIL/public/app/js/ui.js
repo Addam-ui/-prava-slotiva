@@ -323,6 +323,17 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && layers.length) {
     e.preventDefault();
     layers.at(-1).close();
+  } else if (e.key === 'Tab' && layers.length) {
+    const modal = layers.at(-1).element;
+    const focusables = [...modal.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      .filter(el => !el.closest('[hidden]') && el.getClientRects().length);
+    if (!focusables.length) return;
+    const first = focusables[0], last = focusables.at(-1);
+    if (e.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+      e.preventDefault(); first.focus();
+    }
   }
 });
 
@@ -337,13 +348,16 @@ function pushLayer(el, { onClose } = {}) {
       overlay.remove();
       el.remove();
       layers.splice(layers.indexOf(entry), 1);
+      if (!layers.length) document.body.classList.remove('has-dialog');
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
       onClose?.();
     },
   };
   overlay.addEventListener('click', entry.close);
   document.body.append(overlay, el);
+  entry.element = el;
   layers.push(entry);
+  document.body.classList.add('has-dialog');
   requestAnimationFrame(() => {
     const target = el.querySelector('[autofocus]') || el.querySelector('input:not([type=hidden]), select, textarea') || el.querySelector('button');
     target?.focus({ preventScroll: true });

@@ -1001,3 +1001,189 @@ code, .code { font-family: var(--mono); font-size: 12.5px; }
 .notification-copy p { margin:5px 0 }
 .notification-actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap }
 @media(max-width:600px){.notification-item{flex-wrap:wrap}.notification-actions{width:100%;padding-left:44px}}
+
+
+/* Slotiva V6.3 · živý náhled skutečné rezervační stránky vedle nastavení */
+.settings.settings-workspace {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 410px);
+  align-items: start; max-width: 1480px; gap: 22px;
+}
+.settings-editor { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.live-preview-panel { position: sticky; top: 88px; padding: 18px; min-width: 0; overflow: hidden; }
+.live-preview-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.live-preview-header strong { font-size: 15px; font-weight: 700; }
+.live-preview-header .hint { margin: 5px 0 0; line-height: 1.5; }
+.live-preview-status { flex: none; font-size: 10px; font-weight: 750; border: 1px solid var(--line); border-radius: 40px; padding: 5px 8px; color: var(--ink-3); }
+.live-preview-status.is-dirty { color: var(--warning-text); border-color: var(--warning); background: var(--warning-soft); }
+.live-preview-body { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.live-preview-device-switch { display: flex; gap: 5px; padding: 4px; border-radius: 11px; background: var(--surface-2); }
+.live-preview-device-switch .btn { flex: 1; justify-content: center; min-width: 0; border: none; }
+.live-preview-device-switch .btn.is-active { background: var(--accent); color: var(--on-accent); }
+.live-preview-stage { width: 100%; position: relative; min-height: 240px; border-radius: 15px; background: #101819; overflow: hidden; border: 1px solid var(--line); }
+.live-preview-stage.is-desktop { background: #dce5e6; }
+.live-preview-iframe { display: block; position: absolute; top: 0; left: 0; border: 0; transform-origin: left top; background: #f4f3f9; }
+.live-preview-note { margin: 0; font-size: 11px; text-align: center; }
+.live-preview-publish { width: 100%; justify-content: center; }
+.live-preview-toggle { display: none; }
+@media (max-width: 1250px) {
+  .settings.settings-workspace { grid-template-columns: minmax(0, 1fr) minmax(285px, 340px); gap: 14px; }
+  .live-preview-panel { padding: 13px; }
+  .live-preview-header { flex-direction: column; }
+}
+@media (max-width: 1000px) {
+  .settings.settings-workspace { grid-template-columns: minmax(0, 1fr); }
+  .live-preview-panel { order: -1; position: static; }
+  .live-preview-toggle { display: inline-flex; margin-top: 12px; }
+  .live-preview-body { display: none; }
+  .live-preview-panel.is-expanded .live-preview-body { display: flex; }
+  .live-preview-header { flex-direction: row; }
+  .settings-editor { width: 100%; }
+}
+@media (max-width: 480px) {
+  .live-preview-header { flex-direction: column; }
+  .live-preview-panel { padding: 14px; }
+  .live-preview-device-switch .btn { font-size: 12px; }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Slotiva V6.4 · dotykové ovládání dashboardu (telefon a PWA)
+   Desktopové rozložení, práva a API zůstávají beze změny.
+   ──────────────────────────────────────────────────────────────── */
+.mobile-bottom-nav, .mobile-nav-backdrop, .sidebar-close, .mobile-booking-list, .mobile-calendar-layout { display: none; }
+.mobile-calendar-layout { gap: 5px; padding: 4px; border-radius: 11px; background: var(--surface-2); }
+.mobile-calendar-layout .btn { flex: 1; justify-content: center; min-height: 40px; border: 0; }
+.mobile-calendar-layout .btn.is-active { color: var(--on-accent); background: var(--accent); }
+.mobile-calendar-agenda { overflow: hidden; }
+.mobile-agenda-group + .mobile-agenda-group { border-top: 1px solid var(--line); }
+.mobile-agenda-person { display: flex; align-items: center; gap: 10px; padding: 15px 16px; background: var(--surface-2); }
+.mobile-agenda-person strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mobile-agenda-count { color: var(--ink-3); font-size: 12px; white-space: nowrap; }
+.mobile-agenda-items { padding: 7px 10px 12px; display: grid; gap: 8px; }
+.mobile-agenda-booking { width: 100%; min-height: 72px; padding: 12px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); color: var(--ink); display: flex; text-align: left; align-items: center; gap: 10px; cursor: pointer; }
+.mobile-agenda-booking:active, .mobile-booking-open:active { background: var(--accent-soft); }
+.mobile-agenda-time { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-weight: 750; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 47px; }
+.mobile-agenda-time small { font-size: 11px; color: var(--ink-3); font-weight: 500; }
+.mobile-agenda-details { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.mobile-agenda-details strong, .mobile-agenda-details small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-agenda-details small { font-size: 12px; color: var(--ink-2); }
+.mobile-agenda-status .badge { font-size: 11px; }
+.mobile-agenda-event { display: flex; align-items: center; gap: 12px; padding: 13px 12px; background: var(--warning-soft); color: var(--warning-text); border-radius: 11px; }
+.mobile-agenda-event div { display: grid; gap: 2px; }
+.mobile-agenda-event span { font-size: 12px; }
+.mobile-agenda-empty { margin: 0; padding: 17px 8px; color: var(--ink-3); font-size: 13px; }
+
+@media (max-width: 900px) {
+  body.mobile-menu-open { overflow: hidden; }
+  .app.nav-open::after { display: none; } /* skutečný dotykový backdrop nahrazuje pseudoelement */
+  .sidebar { z-index: 91; width: min(304px, 84vw); padding-top: max(14px, env(safe-area-inset-top, 0px)); padding-bottom: max(14px, env(safe-area-inset-bottom, 0px)); }
+  .sidebar-close { display: inline-grid; position: absolute; right: 12px; top: max(20px, env(safe-area-inset-top, 0px)); width: 42px; height: 42px; place-items: center; }
+  .sidebar .brand { padding-right: 48px; }
+  .mobile-nav-backdrop { position: fixed; inset: 0; z-index: 89; border: 0; background: rgba(0, 0, 0, .56); }
+  .app.nav-open .mobile-nav-backdrop { display: block; }
+  .mobile-bottom-nav { position: fixed; inset: auto 0 0 0; z-index: 70; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; background: var(--surface-raised); border-top: 1px solid var(--line); box-shadow: 0 -8px 30px rgba(0, 0, 0, .08); padding: 5px max(6px, env(safe-area-inset-right, 0px)) max(5px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px)); }
+  .mobile-bottom-link { position: relative; min-width: 0; min-height: 53px; padding: 6px 1px 5px; border: 0; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--ink-2); font-size: 10.5px; line-height: 1.2; font-weight: 650; text-decoration: none; background: transparent; cursor: pointer; }
+  .mobile-bottom-link .ico { color: currentColor; }
+  .mobile-bottom-link.is-active { color: var(--accent-ink); background: var(--accent-soft); }
+  .mobile-bottom-link:active { background: var(--surface-3); }
+  .mobile-nav-count { position: absolute; top: 0; left: calc(50% + 7px); border-radius: 999px; min-width: 17px; padding: 0 4px; height: 17px; line-height: 17px; background: var(--critical); color: #fff; font-weight: 800; font-size: 10px; }
+  .content { min-width: 0; padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  .view { max-width: 100%; min-width: 0; }
+  .topbar { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
+  .topbar .menu-btn { min-width: 44px; min-height: 44px; }
+  .topbar-actions .btn { min-width: 42px; min-height: 42px; }
+  .toasts { bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (max-width: 700px) {
+  html, body { width: 100%; max-width: 100%; overflow-x: clip; }
+  .app, .content, .view, .stack, .card { min-width: 0; }
+  .view { padding: 4px 12px 28px; }
+  .topbar { padding-left: 10px; padding-right: 10px; gap: 7px; min-height: 58px; }
+  .topbar h1 { font-size: 17px; }
+  .topbar .subtitle { display: none; }
+  .topbar .team-switch { margin: 0; }
+  .topbar .team-switch .select { height: 44px; font-size: 14px; }
+  .topbar .team-switch-label { width: 100%; }
+  .topbar .team-switch-label > .ico { display: none; }
+  .topbar-actions { max-width: 52%; flex-wrap: wrap; justify-content: flex-end; }
+  .topbar-actions .btn-label { display: inline; }
+  .card-pad, .card-body { padding: 15px; }
+  .card-head { padding: 16px 15px 0; }
+  .card-foot { padding: 12px 15px; flex-wrap: wrap; }
+  .grid-2, .grid-3-2 { grid-template-columns: minmax(0, 1fr); }
+  .btn, button, a { -webkit-tap-highlight-color: transparent; }
+  .btn { min-height: 42px; }
+  .input, .select, .textarea, input[type="date"], input[type="time"], input[type="tel"], input[type="email"] { font-size: 16px; min-height: 44px; }
+  .check input, .check-line input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+  .slot-picker { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
+  .slot-picker button { min-height: 45px; }
+  .toolbar { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; }
+  .toolbar > .segmented { display: flex; overflow-x: auto; max-width: 100%; width: 100%; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .toolbar > .segmented::-webkit-scrollbar { display: none; }
+  .toolbar > .segmented button { min-height: 43px; flex-shrink: 0; }
+  .toolbar .search { width: 100%; min-width: 0; }
+  .toolbar > .input-group { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); }
+  .toolbar > .input-group input[type="date"] { min-width: 0; width: 100% !important; padding: 0 5px; }
+  .table-wrap { display: none; }
+  .mobile-booking-list { display: grid; gap: 10px; padding: 10px; }
+  .mobile-booking-card { display: flex; border: 1px solid var(--line); background: var(--surface-raised); border-radius: 13px; min-width: 0; }
+  .mobile-booking-open { min-width: 0; flex: 1; display: grid; gap: 6px; background: transparent; border: 0; text-align: left; color: var(--ink); cursor: pointer; padding: 14px; }
+  .mobile-booking-when { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px; font-size: 13px; }
+  .mobile-booking-when span, .mobile-booking-service { color: var(--ink-2); font-size: 12px; }
+  .mobile-booking-customer { font-size: 15px; overflow-wrap: anywhere; }
+  .mobile-booking-status { padding-top: 3px; }
+  .mobile-booking-action { display: flex; align-items: flex-start; padding: 8px 8px 0 0; }
+  .mobile-booking-action .action-menu-wrap > button { width: 44px; height: 44px; }
+  .pager { flex-wrap: wrap; gap: 8px; }
+  .pager .input-group { width: 100%; }
+  .pager .btn { flex: 1; }
+  .week-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .week-toolbar > .input-group { grid-column: 1; }
+  .week-toolbar .week-range { grid-column: 1 / -1; grid-row: auto; order: 0; width: 100%; overflow-wrap: anywhere; }
+  .week-toolbar > div[style*="flex: 1"] { display: none; }
+  .week-toolbar .switch { grid-column: 1/-1; }
+  .calendar-mode-switch { justify-self: end; margin-left: 0; }
+  .mobile-calendar-layout { display: flex; margin: 3px 0 12px; }
+  .team-day-filters { width: 100%; padding: 2px 0 9px; margin-bottom: 3px; }
+  .team-day-filters .btn { min-height: 43px; }
+  .week { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  .week-inner { min-width: 900px; }
+  .week-hour-label { font-size: 12px; }
+  .week-head > :first-child, .week-allday > :first-child, .week-hours { position: sticky; left: 0; z-index: 4; background: var(--surface); }
+  .week-head > :first-child { z-index: 5; }
+  .team-day { -webkit-overflow-scrolling: touch; }
+  .team-day-inner { min-width: max-content; }
+  .mobile-agenda-status .badge { white-space: nowrap; }
+  .time-off-time-pair { grid-template-columns: minmax(0,1fr); }
+  .time-off-item-actions { width: 100%; }
+  .time-off-item-actions .btn { flex: 1; }
+  .settings.settings-workspace { display: flex; flex-direction: column; gap: 14px; }
+  .live-preview-panel, .settings-editor { min-width: 0; width: 100%; }
+  .settings-panel, .embed-body { min-width: 0; }
+  .action-menu { max-width: calc(100vw - 16px); }
+  body.has-dialog { overflow: hidden; }
+  .modal-wrap { display: flex; align-items: flex-end; justify-content: center; padding: 0; overflow: hidden; }
+  .modal { width: 100%; max-width: 100%; max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 10px); min-height: 0; overflow: hidden; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; margin: 0; }
+  .modal-head { flex-shrink: 0; padding: 17px 16px 10px; }
+  .modal-head .btn { min-width: 44px; }
+  .modal-body { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 12px 16px 18px; }
+  .modal-foot { flex-shrink: 0; padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); gap: 9px; }
+  .modal-foot > .btn { flex: 1; min-width: 0; min-height: 46px; }
+  .drawer { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border-left: 0; }
+  .drawer-head { flex-shrink: 0; padding: max(12px, env(safe-area-inset-top, 0px)) 15px 12px; }
+  .drawer-body { min-height: 0; padding: 16px; overscroll-behavior: contain; }
+  .drawer-foot { flex-shrink: 0; padding: 12px 15px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .drawer-foot > .btn { min-height: 45px; flex: 1; }
+  .crop-stage { min-width: 0; }
+  .crop-canvas { max-height: min(42dvh, 380px); }
+  .crop-controls { flex-wrap: wrap; }
+  .notification-actions { padding-left: 0; }
+}
+@media (max-width: 375px) {
+  .mobile-bottom-link { font-size: 10px; }
+  .mobile-agenda-booking { gap: 6px; padding: 10px 7px; }
+  .mobile-agenda-status .badge { font-size: 10px; padding: 0 4px; }
+  .mobile-agenda-booking > .ico:last-child { display: none; }
+  .week-toolbar .btn { padding-left: 9px; padding-right: 9px; }
+  .topbar-actions { max-width: 43%; }
+}

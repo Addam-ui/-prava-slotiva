@@ -1,6 +1,7 @@
 import { get, put, post, del } from '../api.js';
 import { h, icon, field, switchControl, toast, withBusy, alertBox, openModal } from '../ui.js';
 import { imagePicker } from '../photo.js';
+import { createLiveBookingPreview } from '../live-preview.js';
 
 const DAYS = [[1, 'Pondělí'], [2, 'Úterý'], [3, 'Středa'], [4, 'Čtvrtek'], [5, 'Pátek'], [6, 'Sobota'], [7, 'Neděle']];
 const BRAND_PRESETS = ['#0a7c80', '#9f1239', '#be185d', '#c2410c', '#15803d', '#0369a1', '#1f1d2e'];
@@ -23,9 +24,10 @@ export async function mount({ view, setSubtitle, app }) {
   let user = data.user;
   let draft = structuredClone(settings);
   let savebarVisible = null;
+  let livePreview = null;
   const expanded = new Set(['Jak se ukazujete klientům', 'Vzhled rezervační stránky']);
 
-  const root = h('div', { class: 'settings' });
+  const root = h('div', { class: 'settings settings-workspace' });
   const savebarHost = h('div');
   view.append(root, savebarHost);
 
@@ -33,6 +35,7 @@ export async function mount({ view, setSubtitle, app }) {
 
   function refreshSavebar() {
     const dirty = isDirty();
+    livePreview?.setDirty(dirty);
     if (dirty === savebarVisible) return;
     savebarVisible = dirty;
     savebarHost.replaceChildren(...(dirty ? [savebar()] : []));
@@ -52,6 +55,7 @@ export async function mount({ view, setSubtitle, app }) {
       parent()[last] = number ? (input.value === '' ? '' : Number(input.value)) : input.value;
       input.classList.remove('is-invalid');
       refreshSavebar();
+      livePreview?.update();
     });
     return input;
   }
@@ -126,6 +130,7 @@ export async function mount({ view, setSubtitle, app }) {
             user = res.user;
             toast('Účet uložen');
             app.refreshMeta();
+            render(); // Při změně adresy aktualizovat i URL živého náhledu.
           } catch (err) {
             error.replaceChildren(alertBox('critical', null, err.message));
           }
@@ -147,6 +152,7 @@ export async function mount({ view, setSubtitle, app }) {
       hex.classList.remove('is-invalid');
       paintPresets();
       refreshSavebar();
+      livePreview?.update();
     };
     const paintPresets = () => presets.replaceChildren(...BRAND_PRESETS.map((c) => h('button', {
       type: 'button',
@@ -186,15 +192,15 @@ export async function mount({ view, setSubtitle, app }) {
       onChange: async (value) => {
         draft.appearance[key] = value;
         refreshSavebar();
-        await save();
+        livePreview?.update();
       },
       onRemove: async () => {
         draft.appearance[key] = '';
         refreshSavebar();
-        await save();
+        livePreview?.update();
       },
     });
-    return section('Vzhled rezervační stránky', 'Váš vlastní vzhled, logo a fotografie. Náhled si před uložením upravíte.',
+    return section('Vzhled rezervační stránky', 'Upravujte logo, pozadí a barvy. Skutečná rezervační stránka se průběžně mění v živém náhledu vpravo – zveřejní se až po uložení.',
       upload('Logo podniku', 'logo', { shape: 'square', maxEdge: 600, limitBytes: 128_000 }),
       upload('Fotografie na pozadí', 'background', { shape: 'landscape', maxEdge: 1200, limitBytes: 320_000 }),
       h('div', { class: 'compact-color' },
@@ -392,9 +398,9 @@ export async function mount({ view, setSubtitle, app }) {
 
   function savebar() {
     return h('div', { class: 'savebar', role: 'region', 'aria-label': 'Neuložené změny' },
-      h('span', {}, 'Máte neuložené změny'),
+      h('span', {}, 'Nezveřejněné změny'),
       h('button', { type: 'button', class: 'btn btn-ghost', onClick: () => { draft = structuredClone(settings); render(); } }, 'Zahodit'),
-      h('button', { type: 'button', class: 'btn btn-primary', onClick: (e) => withBusy(e.currentTarget, save) }, icon('check'), 'Uložit změny'));
+      h('button', { type: 'button', class: 'btn btn-primary', onClick: (e) => withBusy(e.currentTarget, save) }, icon('check'), 'Uložit a zveřejnit'));
   }
 
   async function save() {
@@ -416,9 +422,20 @@ export async function mount({ view, setSubtitle, app }) {
   }
 
   function render() {
-    root.replaceChildren(profileSection(), businessSection(), appearanceSection(), hoursSection(), rulesSection(), notificationsSection(), passwordSection(), storageSection(), deleteSection());
+    // Při překreslení zrušíme posluchače zpráv původního iframe.
+    livePreview?.destroy();
+    const controls = h('div', { class: 'settings-editor' },
+      profileSection(), businessSection(), appearanceSection(), hoursSection(), rulesSection(),
+      notificationsSection(), passwordSection(), storageSection(), deleteSection());
+    livePreview = createLiveBookingPreview({
+      slug: user.slug,
+      getDraft: () => draft,
+      onSave: () => save(),
+    });
+    root.replaceChildren(controls, livePreview.element);
     savebarVisible = null;
     refreshSavebar();
+    livePreview.update();
   }
 
   const beforeUnload = (e) => {
@@ -430,5 +447,5 @@ export async function mount({ view, setSubtitle, app }) {
   window.addEventListener('beforeunload', beforeUnload);
 
   render();
-  return { cleanup: () => window.removeEventListener('beforeunload', beforeUnload) };
+  return { cleanup: () => { window.removeEventListener('beforeunload', beforeUnload); livePreview?.destroy(); } };
 }
